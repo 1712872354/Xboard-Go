@@ -8,6 +8,19 @@
 
 set -e
 
+# 检测是否通过管道运行，如果是则重新从终端读取输入
+if [[ ! -t 0 ]]; then
+    if [[ -e /dev/tty ]]; then
+        exec < /dev/tty
+    else
+        echo "错误: 无法读取终端输入，请下载脚本后运行:"
+        echo "  wget https://raw.githubusercontent.com/1712872354/Xboard-Go/master/install.sh"
+        echo "  chmod +x install.sh"
+        echo "  sudo ./install.sh"
+        exit 1
+    fi
+fi
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
