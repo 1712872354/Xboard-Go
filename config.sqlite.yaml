@@ -1,0 +1,52 @@
+# XBoard-Go 配置文件 (SQLite 版 - 适合单文件部署)
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: "release"  # debug, release, test
+
+database:
+  driver: "sqlite"
+  dbname: "data/xboard.db"  # SQLite 文件路径
+  max_idle_conns: 10
+  max_open_conns: 100
+  conn_max_lifetime: 3600
+
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 100
+
+jwt:
+  secret: "xboard-go-secret-key-change-in-production"
+  access_token_ttl: 7200    # 2 hours in seconds
+  refresh_token_ttl: 604800 # 7 days in seconds
+
+log:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  file_path: "./logs/app.log"
+
+app:
+  name: "XBoard-Go"
+  version: "1.0.0"
+  bcrypt_cost: 12
+  default_user_role: "user"
+  subscribe_token_length: 32
+  node_api_key: "xboard-node-api-key-change-in-production"
+
+grpc:
+  enabled: true
+  port: 50051
+
+rate_limit:
+  enabled: true
+  ip_limit: 100
+  user_limit: 300
+  ip_whitelist:
+    - "127.0.0.1"
+    - "::1"
+  path_whitelist:
+    - "/healthz"

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>代理管理系统前端开发指导 — shadcn/ui + React</title>
+    <style>
+        :root {
+            --primary: #7c3aed;
+            --bg: #fafafa;
+            --card-bg: #ffffff;
+            --text: #18181b;
+            --muted: #52525b;
+            --border: #e4e4e7;
+            --code-bg: #f4f4f5;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 2rem 1rem;
+        }
+        .container { max-width: 1100px; margin: 0 auto; }
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+            padding: 2rem;
+            background: linear-gradient(135deg, #4c1d95, #7c3aed);
+            color: white;
+            border-radius: 16px;
+        }
+        header h1 { font-size: 2.2rem; margin-bottom: 0.5rem; }
+        header p { opacity: 0.9; font-size: 1.1rem; }
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.8rem;
+            margin-bottom: 1.8rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            border: 1px solid var(--border);
+        }
+        h2 {
+            font-size: 1.6rem;
+            margin-bottom: 1.2rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--primary);
+            display: inline-block;
+        }
+        h3 { font-size: 1.25rem; margin: 1.2rem 0 0.8rem; color: var(--primary); }
+        ul, ol { padding-left: 1.5rem; margin: 0.8rem 0; }
+        li { margin-bottom: 0.4rem; }
+        code {
+            background: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 0.9rem;
+        }
+        pre {
+            background: #18181b;
+            color: #e4e4e7;
+            padding: 1.2rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        pre code { background: none; padding: 0; color: inherit; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.95rem;
+        }
+        th, td {
+            border: 1px solid var(--border);
+            padding: 0.7rem 0.9rem;
+            text-align: left;
+        }
+        th { background: #f4f4f5; font-weight: 600; }
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-right: 0.3rem;
+        }
+        .badge-react { background: #e0f2fe; color: #0369a1; }
+        .badge-ts { background: #dcfce7; color: #166534; }
+        .badge-shadcn { background: #fce7f3; color: #be185d; }
+        .badge-tool { background: #fef3c7; color: #92400e; }
+        .prompt-block {
+            background: #fffbeb;
+            border-left: 4px solid var(--warning);
+            padding: 1rem 1.2rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .prompt-block p { font-weight: 600; margin-bottom: 0.3rem; }
+        .prompt-block code { background: #fef3c7; }
+        .footer { text-align: center; margin-top: 2rem; color: var(--muted); font-size: 0.9rem; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>🎨 前端开发指导书</h1>
+        <p>基于 shadcn/ui + React + TypeScript 构建代理管理系统 Web 面板</p>
+    </header>
+
+    <!-- 技术选型 -->
+    <div class="card">
+        <h2>🛠️ 技术选型</h2>
+        <table>
+            <tr><th>类别</th><th>选型</th><th>说明</th></tr>
+            <tr><td>框架</td><td>React 18 + TypeScript</td><td>生态成熟，类型安全</td></tr>
+            <tr><td>构建工具</td><td>Vite</td><td>快速冷启动，HMR</td></tr>
+            <tr><td>样式方案</td><td>Tailwind CSS</td><td>shadcn/ui 基于此构建</td></tr>
+            <tr><td>组件库</td><td>shadcn/ui</td><td>可复制粘贴的高质量组件，完全可控</td></tr>
+            <tr><td>路由</td><td>React Router v6</td><td>声明式路由，支持嵌套与守卫</td></tr>
+            <tr><td>数据获取</td><td>TanStack Query (React Query)</td><td>服务端状态管理，缓存、重试、自动刷新</td></tr>
+            <tr><td>全局状态</td><td>Zustand</td><td>轻量，用于认证状态、UI 偏好等</td></tr>
+            <tr><td>表单处理</td><td>React Hook Form + Zod</td><td>高性能表单，schema 校验</td></tr>
+            <tr><td>HTTP 客户端</td><td>Axios</td><td>拦截器处理 token 和错误</td></tr>
+        </table>
+        <p><strong>建议：</strong> 使用 <code>pnpm</code> 作为包管理器。</p>
+    </div>
+
+    <!-- 项目初始化 -->
+    <div class="card">
+        <h2>🚀 项目初始化步骤</h2>
+        <ol>
+            <li>创建 Vite + React + TS 项目：<code>pnpm create vite frontend --template react-ts</code></li>
+            <li>安装 Tailwind CSS：按照官方文档（<a href="https://tailwindcss.com/docs/guides/vite" target="_blank">Vite 指南</a>）配置。</li>
+            <li>初始化 shadcn/ui：<code>npx shadcn-ui@latest init</code>，选择默认配置。</li>
+            <li>添加所需组件：例如 <code>npx shadcn-ui@latest add button card input table dialog dropdown-menu tabs form</code> 等。</li>
+            <li>安装其他依赖：<code>pnpm add react-router-dom @tanstack/react-query zustand axios react-hook-form zod @hookform/resolvers</code></li>
+            <li>设置路径别名（可选）：在 <code>tsconfig.json</code> 和 <code>vite.config.ts</code> 中配置 <code>@/</code> 指向 <code>src/</code>。</li>
+        </ol>
+    </div>
+
+    <!-- 页面与路由设计 -->
+    <div class="card">
+        <h2>📑 页面清单与路由设计</h2>
+        <p>采用统一布局组件（侧边栏 + 顶部导航），根据用户角色动态显示菜单。</p>
+        <table>
+            <thead>
+                <tr><th>路由</th><th>页面</th><th>权限</th><th>主要功能</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>/login</code></td><td>登录页</td><td>公开</td><td>邮箱密码登录，获取 token</td></tr>
+                <tr><td><code>/register</code></td><td>注册页</td><td>公开</td><td>邮箱注册（可选验证码）</td></tr>
+                <tr><td><code>/dashboard</code></td><td>用户仪表盘</td><td>用户</td><td>显示流量使用、套餐到期、快捷操作</td></tr>
+                <tr><td><code>/plans</code></td><td>套餐列表</td><td>用户</td><td>浏览套餐，购买（生成订单）</td></tr>
+                <tr><td><code>/subscribe</code></td><td>我的订阅</td><td>用户</td><td>查看订阅链接，复制/重置 token，下载配置文件</td></tr>
+                <tr><td><code>/traffic</code></td><td>流量明细</td><td>用户</td><td>查看历史流量图表（可用 Recharts）</td></tr>
+                <tr><td><code>/tickets</code></td><td>工单中心</td><td>用户</td><td>提交工单，查看回复</td></tr>
+                <tr><td><code>/admin/users</code></td><td>用户管理</td><td>管理员</td><td>用户列表、搜索、封禁、修改套餐</td></tr>
+                <tr><td><code>/admin/nodes</code></td><td>节点管理</td><td>管理员</td><td>节点 CRUD，测试连通性</td></tr>
+                <tr><td><code>/admin/plans</code></td><td>套餐管理</td><td>管理员</td><td>套餐 CRUD</td></tr>
+                <tr><td><code>/admin/orders</code></td><td>订单管理</td><td>管理员</td><td>订单列表，手动确认支付</td></tr>
+                <tr><td><code>/admin/dashboard</code></td><td>数据看板</td><td>管理员</td><td>收入统计、用户增长、节点状态图表</td></tr>
+                <tr><td><code>/admin/redeem</code></td><td>卡密管理</td><td>管理员</td><td>生成/导出卡密</td></tr>
+            </tbody>
+        </table>
+        <p><strong>路由守卫：</strong> 使用 <code>&lt;ProtectedRoute&gt;</code> 组件检查认证状态和角色，未登录跳转 <code>/login</code>，无权限显示 403 页面。</p>
+    </div>
+
+    <!-- 与后端 API 对接 -->
+    <div class="card">
+        <h2>🔌 与后端 API 对接</h2>
+        <h3>Axios 实例配置</h3>
+        <pre><code>// src/lib/axios.ts
+import axios from 'axios';
+import { useAuthStore } from '@/store/auth';
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
+  timeout: 10000,
+});
+
+api.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().accessToken;
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const newToken = await refreshAccessToken();
+        useAuthStore.getState().setAccessToken(newToken);
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        useAuthStore.getState().logout();
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+export default api;</code></pre>
+        <h3>React Query 使用示例</h3>
+        <pre><code>// src/hooks/useUsers.ts
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/axios';
+
+export function useUsers(page: number) {
+  return useQuery({
+    queryKey: ['users', page],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/users', { params: { page } });
+      return data;
+    },
+    keepPreviousData: true,
+  });
+}</code></pre>
+        <p><strong>认证状态管理（Zustand）</strong></p>
+        <pre><code>// src/store/auth.ts
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+
+interface AuthState {
+  accessToken: string | null;
+  refreshToken: string | null;
+  user: User | null;
+  setTokens: (access: string, refresh: string) => void;
+  setUser: (user: User) => void;
+  logout: () => void;
+}
+
+export const useAuthStore = create&lt;AuthState&gt;()(
+  persist(
+    (set) => ({
+      accessToken: null,
+      refreshToken: null,
+      user: null,
+      setTokens: (access, refresh) => set({ accessToken: access, refreshToken: refresh }),
+      setUser: (user) => set({ user }),
+      logout: () => set({ accessToken: null, refreshToken: null, user: null }),
+    }),
+    { name: 'auth-storage' }
+  )
+);</code></pre>
+    </div>
+
+    <!-- 关键页面实现要点 -->
+    <div class="card">
+        <h2>📄 关键页面实现要点</h2>
+        <h3>登录页</h3>
+        <ul>
+            <li>使用 <code>react-hook-form</code> + <code>zod</code> 校验邮箱和密码。</li>
+            <li>调用 <code>POST /auth/login</code>，成功后存储 token 和用户信息，跳转仪表盘。</li>
+            <li>错误提示使用 shadcn/ui 的 <code>Alert</code> 或 <code>Toast</code>。</li>
+        </ul>
+        <h3>用户仪表盘</h3>
+        <ul>
+            <li>使用 <code>Card</code> 组件展示流量使用情况（进度条、环形图）。</li>
+            <li>获取 <code>GET /user/profile</code> 获取用户信息。</li>
+            <li>可集成 <code>Recharts</code> 显示近 7 天流量趋势（需要后端提供相应 API）。</li>
+        </ul>
+        <h3>套餐购买流程</h3>
+        <ol>
+            <li>展示套餐卡片列表，点击“购买”弹出确认对话框（<code>Dialog</code>）。</li>
+            <li>调用 <code>POST /orders</code> 创建订单，返回订单号和支付链接/二维码。</li>
+            <li>根据支付方式（支付宝/微信/卡密）显示不同支付界面。</li>
+            <li>轮询订单状态或等待支付回调后刷新用户信息。</li>
+        </ol>
+        <h3>节点管理（管理员）</h3>
+        <ul>
+            <li>使用 <code>Table</code> 展示节点列表，支持分页、搜索、排序。</li>
+            <li>添加/编辑节点使用 <code>Dialog</code> + <code>Form</code>，字段包括类型、地址、端口、倍率等。</li>
+            <li>测试连通性按钮调用 <code>POST /admin/nodes/test</code>，显示结果。</li>
+        </ul>
+        <h3>订阅页面</h3>
+        <ul>
+            <li>展示订阅链接（只读输入框 + 复制按钮），提供重置 token 按钮。</li>
+            <li>下载配置文件按钮：直接链接到后端 <code>/api/v1/client/subscribe?token=xxx</code>，由后端生成文件并下载。</li>
+            <li>使用 <code>Tabs</code> 切换不同格式（Clash、V2Ray、Sing-box）的预览。</li>
+        </ul>
+    </div>
+
+    <!-- shadcn/ui 组件推荐 -->
+    <div class="card">
+        <h2>🧩 推荐的 shadcn/ui 组件</h2>
+        <ul>
+            <li><strong>布局：</strong> <code>Sheet</code>（移动端侧边栏）、<code>Sidebar</code>（可自定义）</li>
+            <li><strong>导航：</strong> <code>NavigationMenu</code>、<code>Tabs</code>、<code>Breadcrumb</code></li>
+            <li><strong>数据展示：</strong> <code>Table</code>、<code>Card</code>、<code>Badge</code>、<code>Avatar</code>、<code>Progress</code></li>
+            <li><strong>表单：</strong> <code>Form</code>、<code>Input</code>、<code>Select</code>、<code>Checkbox</code>、<code>DatePicker</code>、<code>Switch</code></li>
+            <li><strong>反馈：</strong> <code>Dialog</code>、<code>AlertDialog</code>、<code>Toast</code>（sonner）、<code>Tooltip</code></li>
+            <li><strong>其他：</strong> <code>DropdownMenu</code>、<code>Command</code>（搜索）、<code>ScrollArea</code>、<code>Skeleton</code>（加载占位）</li>
+        </ul>
+        <p>按需添加组件，避免一次性引入过多，保持打包体积可控。</p>
+    </div>
+
+    <!-- 状态管理与数据流 -->
+    <div class="card">
+        <h2>🔄 状态管理与数据流建议</h2>
+        <ul>
+            <li><strong>服务端状态</strong>（用户列表、节点、订单等）：统一使用 <strong>TanStack Query</strong>，不要手动存入全局状态。</li>
+            <li><strong>客户端状态</strong>（认证信息、主题、UI 偏好）：使用 <strong>Zustand</strong>，轻量且易用。</li>
+            <li><strong>表单状态</strong>：使用 <code>react-hook-form</code> 的局部状态，避免全局污染。</li>
+            <li>对于需要实时更新的数据（如节点状态），可设置 <code>refetchInterval</code> 或使用 WebSocket（后续扩展）。</li>
+        </ul>
+    </div>
+
+    <!-- 安全注意事项 -->
+    <div class="card">
+        <h2>🔒 前端安全注意事项</h2>
+        <ul>
+            <li>不在前端存储敏感信息（密码、支付密钥），token 存储在内存或安全 cookie 中（HttpOnly 更佳）。</li>
+            <li>所有 API 请求使用 HTTPS，生产环境禁止明文传输。</li>
+            <li>对用户输入进行前端校验（Zod），但后端仍需二次校验。</li>
+            <li>避免 XSS：React 默认转义，但使用 <code>dangerouslySetInnerHTML</code> 时需谨慎。</li>
+            <li>使用 Content Security Policy（CSP）限制资源加载。</li>
+            <li>处理 401 时自动刷新 token，避免频繁登录。</li>
+            <li>路由守卫必须同时在前端和后端实现，前端仅提升体验。</li>
+        </ul>
+    </div>
+
+    <!-- 开发里程碑 -->
+    <div class="card">
+        <h2>📆 前端开发里程碑</h2>
+        <ol>
+            <li><strong>第 1 周：</strong>项目初始化，配置 Tailwind + shadcn/ui，搭建路由和布局框架，实现登录页 UI。</li>
+            <li><strong>第 2 周：</strong>完成认证流程（登录/注册/登出），接入后端 API，实现路由守卫和用户信息存储。</li>
+            <li><strong>第 3 周：</strong>开发用户仪表盘、套餐列表与购买流程、订阅管理页面。</li>
+            <li><strong>第 4 周：</strong>开发管理员页面：用户管理、节点管理、套餐管理、订单管理（基于表格和表单）。</li>
+            <li><strong>第 5 周：</strong>数据看板（图表集成）、工单系统、卡密兑换。</li>
+            <li><strong>第 6 周：</strong>整体 UI 优化、响应式适配、错误处理、加载状态、空状态、测试与部署准备。</li>
+        </ol>
+    </div>
+
+    <!-- 可复用的 AI 提示词 -->
+    <div class="card">
+        <h2>🤖 可复用的 AI 提示词（前端）</h2>
+        <div class="prompt-block">
+            <p>1. 初始化项目并安装 shadcn/ui</p>
+            <code>请指导我使用 Vite 创建一个 React + TypeScript 项目，并集成 Tailwind CSS 和 shadcn/ui。给出详细的命令和配置步骤，包括 tsconfig 路径别名设置。</code>
+        </div>
+        <div class="prompt-block">
+            <p>2. 生成登录页面组件</p>
+            <code>使用 shadcn/ui 和 react-hook-form + zod 编写一个登录页面组件。包含邮箱、密码输入框，表单验证，提交按钮调用 /auth/login 接口，处理成功和失败反馈。使用 TypeScript。</code>
+        </div>
+        <div class="prompt-block">
+            <p>3. 生成数据表格页面</p>
+            <code>用 shadcn/ui 的 Table 组件实现一个用户管理表格，支持分页、搜索、排序，并包含编辑和删除操作按钮。数据从 /admin/users 获取，使用 TanStack Query 管理。请提供完整代码。</code>
+        </div>
+        <div class="prompt-block">
+            <p>4. 生成订阅页面</p>
+            <code>创建一个“我的订阅”页面，展示用户的订阅链接，支持复制、重置 token，并提供 Clash/V2Ray/Sing-box 三种格式的预览标签页。使用 shadcn/ui 的 Tabs 和 Input 组件。</code>
+        </div>
+        <div class="prompt-block">
+            <p>5. 代码审查</p>
+            <code>请审查以下 React 组件代码，检查潜在的性能问题、安全漏洞（如 XSS）、不必要的重渲染，并给出优化建议。代码：[粘贴代码]</code>
+        </div>
+    </div>
+
+    <!-- 部署建议 -->
+    <div class="card">
+        <h2>🚢 部署建议</h2>
+        <ul>
+            <li>使用 <code>pnpm build</code> 生成静态文件，部署到 Nginx 或静态托管服务（Vercel、Netlify、Cloudflare Pages）。</li>
+            <li>Nginx 配置反向代理 <code>/api</code> 到后端服务，避免跨域问题。</li>
+            <li>配置 <code>VITE_API_BASE_URL</code> 环境变量，区分开发和生产环境。</li>
+            <li>使用 CI/CD（GitHub Actions）自动化构建和部署。</li>
+            <li>开启 gzip 压缩，优化加载速度。</li>
+        </ul>
+    </div>
+
+    <!-- 总体指令 -->
+    <div class="card" style="border: 2px solid var(--primary);">
+        <h2>📌 给 AI 的总体前端开发指令</h2>
+        <p><strong>请扮演一位资深前端工程师，精通 React、TypeScript、Tailwind CSS 和 shadcn/ui，按照本指导书逐步实现前端页面和交互逻辑。</strong> 优先完成登录认证、用户仪表盘、套餐购买、订阅管理和节点管理（管理员）等核心功能。每个阶段完成后，提供组件列表、关键代码实现和测试建议。请保持代码整洁、类型安全，并遵循 shadcn/ui 的设计模式。</p>
+        <p>如有不确定的产品需求，请先提出澄清问题。开始吧！</p>
+    </div>
+
+    <div class="footer">
+        <p>本前端指导书与后端指导书（Go）配套使用，可合并为完整项目开发文档。开发过程中请持续审查 AI 生成的代码。</p>
+    </div>
+</div>
+</body>
+</html>

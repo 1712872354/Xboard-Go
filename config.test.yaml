@@ -1,0 +1,47 @@
+# XBoard-Go 测试配置文件（SQLite）
+server:
+  host: "127.0.0.1"
+  port: 8080
+  mode: "debug"
+
+database:
+  driver: "sqlite"
+  dbname: "./xboard_test.db"
+  max_idle_conns: 10
+  max_open_conns: 100
+  conn_max_lifetime: 3600
+
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 100
+
+jwt:
+  secret: "xboard-go-secret-key-change-in-production"
+  access_token_ttl: 7200
+  refresh_token_ttl: 604800
+
+log:
+  level: "debug"
+  format: "console"
+  output: "stdout"
+
+app:
+  name: "XBoard-Go"
+  version: "1.0.0"
+  bcrypt_cost: 10
+  default_user_role: "user"
+  subscribe_token_length: 32
+  node_api_key: "xboard-node-api-key-change-in-production"
+
+rate_limit:
+  enabled: true
+  ip_limit: 100
+  user_limit: 300
+  ip_whitelist:
+    - "127.0.0.1"
+    - "::1"
+  path_whitelist:
+    - "/healthz"

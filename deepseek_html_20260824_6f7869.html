@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XBoard 类代理管理系统 — AI 开发指导书</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --muted: #64748b;
+            --border: #e2e8f0;
+            --code-bg: #f1f5f9;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 2rem 1rem;
+        }
+        .container { max-width: 1100px; margin: 0 auto; }
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+            padding: 2rem;
+            background: linear-gradient(135deg, #1e3a8a, #2563eb);
+            color: white;
+            border-radius: 16px;
+        }
+        header h1 { font-size: 2.2rem; margin-bottom: 0.5rem; }
+        header p { opacity: 0.9; font-size: 1.1rem; }
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.8rem;
+            margin-bottom: 1.8rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            border: 1px solid var(--border);
+        }
+        h2 {
+            font-size: 1.6rem;
+            margin-bottom: 1.2rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--primary);
+            display: inline-block;
+        }
+        h3 { font-size: 1.25rem; margin: 1.2rem 0 0.8rem; color: var(--primary); }
+        ul, ol { padding-left: 1.5rem; margin: 0.8rem 0; }
+        li { margin-bottom: 0.4rem; }
+        code {
+            background: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 0.9rem;
+        }
+        pre {
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 1.2rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        pre code { background: none; padding: 0; color: inherit; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.95rem;
+        }
+        th, td {
+            border: 1px solid var(--border);
+            padding: 0.7rem 0.9rem;
+            text-align: left;
+        }
+        th { background: #f1f5f9; font-weight: 600; }
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-right: 0.3rem;
+        }
+        .badge-go { background: #e0f2fe; color: #0369a1; }
+        .badge-db { background: #fce7f3; color: #be185d; }
+        .badge-tool { background: #dcfce7; color: #166534; }
+        .prompt-block {
+            background: #fffbeb;
+            border-left: 4px solid var(--warning);
+            padding: 1rem 1.2rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .prompt-block p { font-weight: 600; margin-bottom: 0.3rem; }
+        .prompt-block code { background: #fef3c7; }
+        .footer { text-align: center; margin-top: 2rem; color: var(--muted); font-size: 0.9rem; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>🚀 XBoard 类代理管理系统</h1>
+        <p>AI 辅助开发指导书 · 使用 Go 语言构建</p>
+    </header>
+
+    <!-- 项目概述 -->
+    <div class="card">
+        <h2>📋 项目概述</h2>
+        <p>本项目旨在开发一个功能完备的代理管理面板，类似 <strong>XBoard</strong> 或 <strong>V2Board</strong>。系统需支持用户管理、套餐订阅、节点管理、流量统计、支付集成等功能，并能够与代理节点（如 XrayR、sing-box）对接。</p>
+        <p><strong>核心目标：</strong>构建一个高并发、模块化、可扩展的后端服务，前端后续可独立开发。</p>
+        <p><strong>技术选型：</strong> <span class="badge badge-go">Go 1.22+</span> <span class="badge badge-db">PostgreSQL</span> <span class="badge badge-tool">Gin + GORM</span> <span class="badge badge-tool">Redis</span> <span class="badge badge-tool">JWT</span></p>
+    </div>
+
+    <!-- 架构设计 -->
+    <div class="card">
+        <h2>🏗️ 系统架构</h2>
+        <p>采用<strong>模块化单体</strong>架构，按功能划分包，便于维护和扩展。</p>
+        <pre><code>┌─────────────┐      ┌──────────────┐      ┌─────────────┐
+│  前端面板   │ ---&gt; │  API 网关    │ ---&gt; │  业务服务   │
+│ (Vue/React) │      │ (Gin + 中间件)│      │ (Go 模块)   │
+└─────────────┘      └──────────────┘      └──────┬──────┘
+                                                  │
+                    ┌─────────────────────────────┼─────────────────────┐
+                    │                             │                     │
+               ┌────▼────┐                  ┌────▼────┐          ┌────▼────┐
+               │ PostgreSQL│                │  Redis  │          │ 消息队列 │
+               │ /MySQL   │                │ (缓存/  │          │ (NATS/  │
+               └─────────┘                  │ 会话/限流)│         │ Redis)  │
+                                            └─────────┘          └─────────┘
+                                                                      │
+                                                      ┌───────────────▼───────────────┐
+                                                      │         节点通信服务           │
+                                                      │  (gRPC / HTTP API)            │
+                                                      └───────────────┬───────────────┘
+                                                                      │
+                                          ┌───────────────────────────┼───────────────────────────┐
+                                          │                           │                           │
+                                     ┌────▼────┐                ┌────▼────┐                ┌────▼────┐
+                                     │ 节点1   │                │ 节点2   │                │ 节点3   │
+                                     │ XrayR   │                │ sing-box│                │ XrayR   │
+                                     └─────────┘                └─────────┘                └─────────┘</code></pre>
+        <p><strong>关键组件：</strong></p>
+        <ul>
+            <li><strong>后端 API</strong>：Gin + GORM，提供 RESTful 接口。</li>
+            <li><strong>数据库</strong>：PostgreSQL，存储用户、节点、订单、流量记录等。</li>
+            <li><strong>缓存</strong>：Redis，用于用户会话、订阅缓存、节点状态、限流。</li>
+            <li><strong>节点通信</strong>：实现与 XrayR 兼容的 HTTP API（后续可扩展 gRPC）。</li>
+        </ul>
+    </div>
+
+    <!-- 数据库设计 -->
+    <div class="card">
+        <h2>🗄️ 数据库表设计（核心表）</h2>
+        <p>请根据以下表结构生成 Go 模型和迁移文件。字段类型可根据实际需求调整。</p>
+        <table>
+            <thead>
+                <tr><th>表名</th><th>主要字段</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>users</code></td><td>id, email, password_hash, role, status, traffic_limit, used_traffic, expired_at, created_at, updated_at</td><td>用户表，密码使用 bcrypt 加密</td></tr>
+                <tr><td><code>plans</code></td><td>id, name, price, traffic, duration_days, device_limit, node_group, description</td><td>套餐定义</td></tr>
+                <tr><td><code>orders</code></td><td>id, user_id, plan_id, amount, status, payment_method, trade_no, created_at, paid_at</td><td>订单记录</td></tr>
+                <tr><td><code>nodes</code></td><td>id, name, type, address, port, server_info, group_id, rate, status, parent_id</td><td>节点信息，type 支持 vmess, vless, trojan, ss, hysteria2 等</td></tr>
+                <tr><td><code>node_user</code></td><td>id, user_id, node_id, uuid, passwd, created_at</td><td>用户与节点关联，存储每个用户在节点上的连接凭证</td></tr>
+                <tr><td><code>traffic_logs</code></td><td>id, user_id, node_id, upload, download, recorded_at</td><td>流量使用明细（按小时/天聚合）</td></tr>
+                <tr><td><code>tickets</code></td><td>id, user_id, subject, content, status, created_at, updated_at</td><td>工单</td></tr>
+                <tr><td><code>redeem_codes</code></td><td>id, code, plan_id, status, used_by, used_at</td><td>卡密/兑换码</td></tr>
+            </tbody>
+        </table>
+        <p><strong>索引建议：</strong> users.email 唯一索引；orders.user_id、orders.status；traffic_logs (user_id, recorded_at)；node_user (user_id, node_id) 唯一。</p>
+    </div>
+
+    <!-- 开发里程碑 -->
+    <div class="card">
+        <h2>📆 开发里程碑（AI 任务分解）</h2>
+        <ol>
+            <li>
+                <h3>阶段 1：基础框架搭建（第 1-2 周）</h3>
+                <ul>
+                    <li>初始化 Go 模块，引入 Gin、GORM、Redis、JWT、Zap 日志等依赖。</li>
+                    <li>配置管理（viper），加载环境变量、配置文件。</li>
+                    <li>实现基础中间件：CORS、请求日志、错误恢复、JWT 认证、RBAC 权限。</li>
+                    <li>数据库连接与自动迁移（GORM AutoMigrate）。</li>
+                    <li>健康检查接口 <code>/healthz</code>。</li>
+                </ul>
+            </li>
+            <li>
+                <h3>阶段 2：用户与认证模块（第 3-4 周）</h3>
+                <ul>
+                    <li>用户注册、登录、邮箱验证（可选，先实现基础注册登录）。</li>
+                    <li>密码加密（bcrypt），生成 JWT access token，refresh token。</li>
+                    <li>用户信息查询、修改密码、重置密码。</li>
+                    <li>管理员用户管理接口（列表、封禁、修改角色）。</li>
+                </ul>
+            </li>
+            <li>
+                <h3>阶段 3：套餐、订单与订阅（第 5-6 周）</h3>
+                <ul>
+                    <li>套餐 CRUD（管理员），用户可查看套餐列表。</li>
+                    <li>生成订单，模拟支付（先实现手动确认支付）。</li>
+                    <li>用户购买套餐后，更新用户流量额度、到期时间。</li>
+                    <li>生成订阅链接：<code>/api/v1/client/subscribe?token=xxx</code>，支持 Clash、V2Ray、Sing-box 格式。</li>
+                    <li>实现订阅内容生成逻辑，根据用户套餐中的节点组和节点类型动态生成配置。</li>
+                </ul>
+            </li>
+            <li>
+                <h3>阶段 4：节点管理与对接（第 7-8 周）</h3>
+                <ul>
+                    <li>节点 CRUD（管理员），支持添加 V2Ray/Xray 节点。</li>
+                    <li>实现节点 API（模拟 XrayR 对接）：</li>
+                    <li><code>GET /api/v1/server/UniProxy/user</code>：获取所有有效用户及节点关联信息。</li>
+                    <li><code>POST /api/v1/server/UniProxy/push</code>：节点上报流量使用情况。</li>
+                    <li><code>POST /api/v1/server/UniProxy/alivelist</code>：节点心跳/存活上报。</li>
+                    <li>节点测试连通性接口。</li>
+                </ul>
+            </li>
+            <li>
+                <h3>阶段 5：流量统计与扣减（第 9-10 周）</h3>
+                <ul>
+                    <li>接收节点上报的流量数据，写入 <code>traffic_logs</code>。</li>
+                    <li>更新用户 <code>used_traffic</code>，超出 <code>traffic_limit</code> 自动禁用。</li>
+                    <li>使用 Redis 原子操作或数据库事务防止并发超扣。</li>
+                    <li>提供用户流量查询接口（实时、历史）。</li>
+                </ul>
+            </li>
+            <li>
+                <h3>阶段 6：支付集成（第 11-12 周）</h3>
+                <ul>
+                    <li>接入支付宝/微信支付（沙箱环境）。</li>
+                    <li>实现支付回调处理，验证签名，更新订单状态并激活用户套餐。</li>
+                    <li>卡密兑换功能。</li>
+                </ul>
+            </li>
+            <li>
+                <h3>阶段 7：工单、审计与看板（可选）</h3>
+                <ul>
+                    <li>工单系统：用户提交工单，管理员回复。</li>
+                    <li>审计规则：设备数限制、IP 变更检测。</li>
+                    <li>管理员数据看板：收入统计、用户活跃度、节点状态。</li>
+                </ul>
+            </li>
+        </ol>
+    </div>
+
+    <!-- AI 辅助提示词 -->
+    <div class="card">
+        <h2>🤖 可复用的 AI 提示词（Prompt）</h2>
+        <p>将这些提示词直接发送给 AI，可获得高质量的代码生成、审查或设计建议。</p>
+
+        <div class="prompt-block">
+            <p>1. 生成数据库模型与迁移</p>
+            <code>请根据以下表结构，用 Go 和 GORM 生成对应的模型结构体，并添加合适的 json tag 和索引注释。表结构：users(id, email, password_hash, role, status, traffic_limit, used_traffic, expired_at, created_at, updated_at)；plans(id, name, price, traffic, duration_days, device_limit, node_group, description)。</code>
+        </div>
+
+        <div class="prompt-block">
+            <p>2. 生成 JWT 认证中间件</p>
+            <code>用 Go 和 Gin 框架编写一个 JWT 认证中间件，要求：从 Authorization header 解析 Bearer token；验证 token 有效性；将 user_id 和 role 存入 context；对无效 token 返回 401。同时实现一个简单的登录接口，验证用户密码（bcrypt）后签发 token。</code>
+        </div>
+
+        <div class="prompt-block">
+            <p>3. 生成订阅内容格式化函数</p>
+            <code>用 Go 编写一个函数，输入用户的节点列表（包含节点类型、地址、端口、UUID、加密方式等）和订阅格式（clash/v2ray/sing-box），输出对应的订阅内容。请支持 vmess、vless、trojan、shadowsocks 四种协议，并注意对特殊字符的转义。</code>
+        </div>
+
+        <div class="prompt-block">
+            <p>4. 实现流量扣减的并发安全方案</p>
+            <code>在 Go + Redis 环境下，设计一个方案：节点上报用户流量后，原子地增加用户的 used_traffic，并判断是否超过 traffic_limit。若超过则自动禁用用户。请给出具体的 Redis 命令或 Lua 脚本，并说明如何避免并发超扣。</code>
+        </div>
+
+        <div class="prompt-block">
+            <p>5. 代码审查</p>
+            <code>请审查以下 Go 代码片段，指出潜在的安全漏洞（SQL注入、越权、错误处理等）和性能问题，并给出优化建议。代码：[粘贴代码]</code>
+        </div>
+    </div>
+
+    <!-- 安全注意事项 -->
+    <div class="card">
+        <h2>🔒 安全注意事项</h2>
+        <ul>
+            <li>所有用户输入必须进行校验和清理，使用 GORM 参数化查询防止 SQL 注入。</li>
+            <li>密码使用 bcrypt（cost ≥ 10）存储，绝不明文。</li>
+            <li>JWT 设置合理过期时间（如 2 小时），并实现 refresh token 机制。</li>
+            <li>订阅链接 token 需随机且可重置，支持绑定 IP 或设备数限制。</li>
+            <li>支付回调必须验证签名，防止伪造回调，订单状态更新需幂等。</li>
+            <li>节点上报流量接口需要 API 密钥认证，避免伪造流量数据。</li>
+            <li>管理接口（/admin/*）需严格 RBAC 权限校验。</li>
+            <li>使用 Redis 实现登录、订阅等接口的限流，防止暴力破解。</li>
+            <li>日志中不得记录密码、token 等敏感信息。</li>
+        </ul>
+    </div>
+
+    <!-- 部署建议 -->
+    <div class="card">
+        <h2>🚢 部署建议</h2>
+        <ul>
+            <li>使用 Docker 容器化部署后端、PostgreSQL、Redis。</li>
+            <li>前端构建为静态文件，由 Nginx 托管，反向代理 /api 到后端。</li>
+            <li>节点使用 XrayR 或自研 agent，配置对接面板 API。</li>
+            <li>生产环境开启 HTTPS，配置域名。</li>
+            <li>定期备份 PostgreSQL 数据库，监控 Redis 内存使用。</li>
+        </ul>
+    </div>
+
+    <!-- 给 AI 的总体指令 -->
+    <div class="card" style="border: 2px solid var(--primary);">
+        <h2>📌 给 AI 的总体开发指令</h2>
+        <p><strong>请扮演一位资深的 Go 后端开发工程师，遵循本指导书中的技术选型、架构和里程碑，逐步生成可运行的代码。</strong> 优先完成阶段 1-3（基础框架、用户认证、套餐订阅），然后继续后续阶段。每个阶段完成后，请提供代码文件列表、关键实现说明和测试建议。请确保代码遵循 Go 最佳实践，包含必要的错误处理和注释，并考虑安全性。</p>
+        <p>如有不确定的需求，请提出澄清问题，而不是假设。开始吧！</p>
+    </div>
+
+    <div class="footer">
+        <p>本指导书由 AI 辅助生成，可根据实际需求调整。开发过程中请持续审查 AI 生成的代码。</p>
+    </div>
+</div>
+</body>
+</html>

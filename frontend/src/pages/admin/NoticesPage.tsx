@@ -1,0 +1,209 @@
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { toast } from 'sonner'
+import api from '@/lib/api'
+import type { Notice, PaginatedResponse } from '@/types'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { formatDate } from '@/lib/utils'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
+
+const useAdminNotices = (page = 1, pageSize = 20) =>
+  useQuery({
+    queryKey: ['admin', 'notices', page, pageSize],
+    queryFn: async () => (await api.get('/admin/notices', { params: { page, page_size: pageSize } })) as unknown as PaginatedResponse<Notice>,
+  })
+
+const useCreateNotice = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: Partial<Notice>) => await api.post('/admin/notices', data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'notices'] }); toast.success('公告创建成功') },
+  })
+}
+
+const useUpdateNotice = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, ...data }: Partial<Notice> & { id: number }) => await api.put(`/admin/notices/${id}`, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'notices'] }); toast.success('公告更新成功') },
+  })
+}
+
+const useDeleteNotice = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => await api.delete(`/admin/notices/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'notices'] }); toast.success('公告删除成功') },
+  })
+}
+
+const noticeSchema = z.object({
+  title: z.string().min(1, '请输入标题'),
+  content: z.string().min(1, '请输入内容'),
+  show: z.number().optional(),
+  sort: z.coerce.number().optional(),
+})
+
+type NoticeForm = z.infer<typeof noticeSchema>
+
+export default function NoticesPage() {
+  const [page, setPage] = useState(1)
+  const [dialog, setDialog] = useState<'create' | 'edit' | null>(null)
+  const [editNotice, setEditNotice] = useState<Notice | null>(null)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [showSwitch, setShowSwitch] = useState(true)
+
+  const { data, isLoading } = useAdminNotices(page)
+  const createNotice = useCreateNotice()
+  const updateNotice = useUpdateNotice()
+  const deleteNotice = useDeleteNotice()
+
+  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<NoticeForm>({
+    resolver: zodResolver(noticeSchema),
+  })
+
+  const openCreate = () => {
+    reset({ title: '', content: '', sort: 0 })
+    setShowSwitch(true)
+    setDialog('create')
+  }
+
+  const openEdit = (n: Notice) => {
+    reset({ title: n.title, content: n.content, sort: n.sort })
+    setShowSwitch(n.show === 1)
+    setEditNotice(n)
+    setDialog('edit')
+  }
+
+  const handleCreate = (data: NoticeForm) => {
+    createNotice.mutate({ ...data, show: showSwitch ? 1 : 0 }, { onSuccess: () => setDialog(null) })
+  }
+
+  const handleEdit = (data: NoticeForm) => {
+    if (!editNotice) return
+    updateNotice.mutate({ id: editNotice.id, ...data, show: showSwitch ? 1 : 0 }, { onSuccess: () => { setDialog(null); setEditNotice(null) } })
+  }
+
+  const handleDelete = () => {
+    if (deleteId !== null) deleteNotice.mutate(deleteId, { onSuccess: () => setDeleteId(null) })
+  }
+
+  const totalPages = data ? Math.ceil(data.total / data.page_size) : 1
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">公告管理</h1>
+        <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />新建公告</Button>
+      </div>
+
+      <Card>
+        <CardHeader />
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>标题</TableHead>
+                    <TableHead>显示</TableHead>
+                    <TableHead>排序</TableHead>
+                    <TableHead>创建时间</TableHead>
+                    <TableHead className="text-right">操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data?.list.map((n) => (
+                    <TableRow key={n.id}>
+                      <TableCell className="font-medium">{n.title}</TableCell>
+                      <TableCell>
+                        <Badge variant={n.show === 1 ? 'success' : 'secondary'}>{n.show === 1 ? '显示' : '隐藏'}</Badge>
+                      </TableCell>
+                      <TableCell>{n.sort}</TableCell>
+                      <TableCell className="text-xs">{formatDate(n.created_at)}</TableCell>
+                      <TableCell className="text-right space-x-1">
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(n)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => setDeleteId(n.id)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="mt-4 flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">共 {data?.total ?? 0} 条</p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button>
+                  <span className="flex items-center text-sm">{page} / {totalPages}</span>
+                  <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>下一页</Button>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialog !== null} onOpenChange={() => { setDialog(null); setEditNotice(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{dialog === 'create' ? '新建公告' : '编辑公告'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit(dialog === 'create' ? handleCreate : handleEdit)} className="space-y-4">
+            <div className="space-y-2">
+              <Label>标题</Label>
+              <Input {...register('title')} />
+              {errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label>内容</Label>
+              <Textarea {...register('content')} rows={6} />
+              {errors.content && <p className="text-xs text-destructive">{errors.content.message}</p>}
+            </div>
+            <div className="flex items-center justify-between">
+              <Label>显示</Label>
+              <Switch checked={showSwitch} onCheckedChange={setShowSwitch} />
+            </div>
+            <div className="space-y-2">
+              <Label>排序</Label>
+              <Input type="number" {...register('sort')} />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDialog(null)}>取消</Button>
+              <Button type="submit">保存</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认删除</DialogTitle>
+            <DialogDescription>确定要删除该公告吗？此操作不可撤销。</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteId(null)}>取消</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteNotice.isPending}>确认删除</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

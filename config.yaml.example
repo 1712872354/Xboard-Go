@@ -1,0 +1,54 @@
+# Xboard-Go Configuration
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: release  # debug, release, test
+
+database:
+  driver: sqlite  # sqlite, mysql, postgres
+  source: data/xboard.db
+  # MySQL example:
+  # driver: mysql
+  # source: user:password@tcp(localhost:3306)/xboard?charset=utf8mb4&parseTime=True&loc=Local
+  # PostgreSQL example:
+  # driver: postgres
+  # source: host=localhost user=postgres password=postgres dbname=xboard port=5432 sslmode=disable
+
+# Redis (optional, for caching and rate limiting)
+# redis:
+#   addr: localhost:6379
+#   password: ""
+#   db: 0
+
+# Application settings
+app:
+  name: Xboard-Go
+  # Secret key for JWT signing (CHANGE THIS!)
+  key: change-me-to-a-random-secret-key
+  # API key for node authentication (CHANGE THIS!)
+  node_api_key: change-me-node-api-key
+  # Default user role: user
+  default_user_role: user
+  # Subscribe token length
+  subscribe_token_length: 32
+
+# gRPC settings for node communication
+grpc:
+  enabled: true
+  port: 50051
+
+# Rate limiting
+rate_limit:
+  enabled: false
+  ip_limit: 100
+  user_limit: 200
+  ip_whitelist:
+    - "127.0.0.1"
+  path_whitelist:
+    - "/healthz"
+
+# Logger
+logger:
+  level: info  # debug, info, warn, error
+  format: json  # json, text
