@@ -5,6 +5,9 @@ RUN apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /build
 
+# Set Go proxy for faster downloads
+ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+
 # Cache dependencies
 COPY go.mod go.sum ./
 RUN go mod download
