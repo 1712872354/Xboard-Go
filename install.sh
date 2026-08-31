@@ -84,7 +84,7 @@ main() {
     case $DB_TYPE in
         1)
             DB_DRIVER="sqlite"
-            DB_SOURCE="${DATA_DIR}/xboard.db"
+            DB_CONFIG="  dbname: ${DATA_DIR}/xboard.db"
             ;;
         2)
             DB_DRIVER="mysql"
@@ -93,7 +93,7 @@ main() {
             read -p "MySQL 数据库 [xboard]: " DB_NAME < /dev/tty; DB_NAME=${DB_NAME:-xboard}
             read -p "MySQL 用户 [root]: " DB_USER < /dev/tty; DB_USER=${DB_USER:-root}
             read -sp "MySQL 密码: " DB_PASS < /dev/tty; echo ""
-            DB_SOURCE="${DB_USER}:${DB_PASS}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?charset=utf8mb4&parseTime=True&loc=Local"
+            DB_CONFIG="  host: ${DB_HOST}\n  port: ${DB_PORT}\n  user: ${DB_USER}\n  password: \"${DB_PASS}\"\n  dbname: ${DB_NAME}"
             ;;
         3)
             DB_DRIVER="postgres"
@@ -102,7 +102,7 @@ main() {
             read -p "PostgreSQL 数据库 [xboard]: " DB_NAME < /dev/tty; DB_NAME=${DB_NAME:-xboard}
             read -p "PostgreSQL 用户 [postgres]: " DB_USER < /dev/tty; DB_USER=${DB_USER:-postgres}
             read -sp "PostgreSQL 密码: " DB_PASS < /dev/tty; echo ""
-            DB_SOURCE="host=${DB_HOST} user=${DB_USER} password=${DB_PASS} dbname=${DB_NAME} port=${DB_PORT} sslmode=disable"
+            DB_CONFIG="  host: ${DB_HOST}\n  port: ${DB_PORT}\n  user: ${DB_USER}\n  password: \"${DB_PASS}\"\n  dbname: ${DB_NAME}\n  sslmode: disable"
             ;;
     esac
 
@@ -153,7 +153,7 @@ server:
 
 database:
   driver: ${DB_DRIVER}
-  source: ${DB_SOURCE}
+$(echo -e "${DB_CONFIG}")
 EOF
 
     if [[ "${USE_REDIS,,}" == "y" ]]; then
