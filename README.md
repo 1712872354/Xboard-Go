@@ -13,18 +13,34 @@ Xboard-Go 是 [Xboard](https://github.com/cedar2025/Xboard) 的 Go 语言重写�
 
 ## 快速开始
 
-### Docker 部署 (推荐)
+### 一键部署 (推荐)
 
 ```bash
-# 创建数据目录
-mkdir -p data
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/1712872354/Xboard-Go/master/install.sh | bash
 
-# 复制配置文件
-cp config.yaml.example data/config.yaml
-# 编辑配置文件
-vi data/config.yaml
+# 或者下载脚本后运行
+wget https://raw.githubusercontent.com/1712872354/Xboard-Go/master/install.sh
+chmod +x install.sh
+sudo ./install.sh
+```
 
-# 启动服务
+```powershell
+# Windows PowerShell
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/1712872354/Xboard-Go/master/install.ps1" -OutFile "install.ps1"
+.\install.ps1
+```
+
+部署脚本支持：
+- 自动检测系统和架构
+- 自由选择 Docker 或二进制部署
+- 自动配置数据库 (SQLite/MySQL/PostgreSQL)
+- 自动生成配置文件
+- 初始化管理员账户
+
+### Docker 部署
+
+```bash
 docker run -d --restart=always \
   --name xboard-go \
   -p 8080:8080 \
@@ -36,54 +52,19 @@ docker run -d --restart=always \
 ### Docker Compose
 
 ```bash
-# 克隆代码
 git clone https://github.com/1712872354/Xboard-Go.git
 cd Xboard-Go
-
-# 创建数据目录并复制配置
 mkdir -p data
 cp config.yaml.example data/config.yaml
-# 编辑配置文件
-vi data/config.yaml
-
-# 启动服务
 docker-compose up -d
 ```
 
 ### 直接运行
 
 ```bash
-# 下载对应平台的二进制文件
 wget https://github.com/1712872354/Xboard-Go/releases/latest/download/xboard-go-linux-amd64
 chmod +x xboard-go-linux-amd64
-
-# 复制配置文件
-cp config.yaml.example config.yaml
-# 编辑配置文件
-vi config.yaml
-
-# 运行
 ./xboard-go-linux-amd64 -config config.yaml
-```
-
-### 从源码构建
-
-```bash
-# 克隆代码
-git clone https://github.com/1712872354/Xboard-Go.git
-cd Xboard-Go
-
-# 安装前端依赖并构建
-cd frontend && pnpm install && pnpm run build && cd ..
-
-# 复制前端到嵌入目录
-cp -r frontend/dist/* internal/static/dist/
-
-# 编译 Go 二进制
-go build -o bin/xboard-go ./cmd/server/
-
-# 运行
-./bin/xboard-go -config config.yaml
 ```
 
 ## 配置
