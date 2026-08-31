@@ -19,7 +19,6 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>
 
 export default function LoginPage() {
-  const navigate = useNavigate()
   const login = useLogin('/admin/dashboard')
   const [loading, setLoading] = useState(false)
 
