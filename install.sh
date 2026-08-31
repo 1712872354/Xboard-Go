@@ -101,6 +101,19 @@ update_binary() {
         cp "${INSTALL_DIR}/xboard-go" "${INSTALL_DIR}/xboard-go.bak"
     fi
 
+    # 先停止服务（避免 Text file busy 错误）
+    log_info "停止当前服务..."
+    if systemctl is-active --quiet xboard-go 2>/dev/null; then
+        systemctl stop xboard-go
+    else
+        if [[ -f "${DATA_DIR}/xboard-go.pid" ]]; then
+            kill $(cat "${DATA_DIR}/xboard-go.pid") 2>/dev/null || true
+            rm -f "${DATA_DIR}/xboard-go.pid"
+        fi
+        pkill -f "xboard-go -config" 2>/dev/null || true
+    fi
+    sleep 1
+
     # 检测系统架构
     local arch=$(uname -m)
     case $arch in
@@ -124,20 +137,11 @@ update_binary() {
 
     chmod +x "${INSTALL_DIR}/xboard-go"
 
-    # 重启服务
-    log_info "重启服务..."
-    if systemctl is-active --quiet xboard-go 2>/dev/null; then
-        systemctl restart xboard-go
+    # 启动服务
+    log_info "启动服务..."
+    if systemctl is-enabled --quiet xboard-go 2>/dev/null; then
+        systemctl start xboard-go
     else
-        # 停止旧进程
-        if [[ -f "${DATA_DIR}/xboard-go.pid" ]]; then
-            kill $(cat "${DATA_DIR}/xboard-go.pid") 2>/dev/null || true
-            rm -f "${DATA_DIR}/xboard-go.pid"
-        fi
-        pkill -f "xboard-go -config" 2>/dev/null || true
-
-        # 启动新进程
-        sleep 1
         nohup ${INSTALL_DIR}/xboard-go -config ${DATA_DIR}/config.yaml > ${DATA_DIR}/xboard-go.log 2>&1 &
         echo $! > ${DATA_DIR}/xboard-go.pid
     fi
