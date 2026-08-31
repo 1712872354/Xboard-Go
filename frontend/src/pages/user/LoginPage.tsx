@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { toast } from 'sonner'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useLogin } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
@@ -32,12 +31,7 @@ export default function LoginPage() {
   })
 
   const onSubmit = (data: FormData) => {
-    login.mutate(data, {
-      onSuccess: () => {
-        toast.success('登录成功')
-        navigate('/user/dashboard')
-      },
-    })
+    login.mutate(data)
   }
 
   return (

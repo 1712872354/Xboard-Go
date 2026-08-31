@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -20,7 +20,7 @@ type LoginForm = z.infer<typeof loginSchema>
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const login = useLogin()
+  const login = useLogin('/admin/dashboard')
   const [loading, setLoading] = useState(false)
 
   const {
@@ -35,8 +35,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login.mutateAsync(data)
-      toast.success('登录成功')
-      navigate('/admin/dashboard')
+      // 登录成功后的跳转由 useLogin hook 处理
     } catch {
       toast.error('登录失败，请检查邮箱和密码')
     } finally {
