@@ -28,7 +28,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 9
 
       - name: Cache pnpm modules
         uses: actions/cache@v4
@@ -118,6 +118,11 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+
+      - name: Create placeholder dist for embed
+        run: |
+          mkdir -p internal/static/dist
+          echo '<!DOCTYPE html><html><head><title>Placeholder</title></head><body></body></html>' > internal/static/dist/index.html
 
       - name: Run tests
         run: go test -v -race -count=1 ./...
