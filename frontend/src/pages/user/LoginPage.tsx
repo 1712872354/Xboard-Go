@@ -18,7 +18,6 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 export default function LoginPage() {
-  const navigate = useNavigate()
   const login = useLogin()
   const [showPassword, setShowPassword] = useState(false)
 
