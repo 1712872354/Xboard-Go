@@ -94,12 +94,59 @@ func (m *MockPlanRepository) ListActive() ([]model.Plan, error) {
 	return args.Get(0).([]model.Plan), args.Error(1)
 }
 
+// MockCouponRepository 模拟优惠券仓储
+type MockCouponRepository struct {
+	mock.Mock
+}
+
+func (m *MockCouponRepository) Create(coupon *model.Coupon) error {
+	args := m.Called(coupon)
+	return args.Error(0)
+}
+
+func (m *MockCouponRepository) GetByID(id uint) (*model.Coupon, error) {
+	args := m.Called(id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Coupon), args.Error(1)
+}
+
+func (m *MockCouponRepository) GetByCode(code string) (*model.Coupon, error) {
+	args := m.Called(code)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Coupon), args.Error(1)
+}
+
+func (m *MockCouponRepository) Update(coupon *model.Coupon) error {
+	args := m.Called(coupon)
+	return args.Error(0)
+}
+
+func (m *MockCouponRepository) Delete(id uint) error {
+	args := m.Called(id)
+	return args.Error(0)
+}
+
+func (m *MockCouponRepository) List(page, pageSize int) ([]model.Coupon, int64, error) {
+	args := m.Called(page, pageSize)
+	return args.Get(0).([]model.Coupon), args.Get(1).(int64), args.Error(2)
+}
+
+func (m *MockCouponRepository) IncrementUsedCount(id uint) error {
+	args := m.Called(id)
+	return args.Error(0)
+}
+
 // TestOrderService_CreateOrder 测试创建订单
 func TestOrderService_CreateOrder(t *testing.T) {
 	mockOrderRepo := new(MockOrderRepository)
 	mockPlanRepo := new(MockPlanRepository)
 	mockUserRepo := new(MockUserRepository)
-	orderService := NewOrderService(mockOrderRepo, mockPlanRepo, mockUserRepo)
+	mockCouponRepo := new(MockCouponRepository)
+	orderService := NewOrderService(mockOrderRepo, mockPlanRepo, mockUserRepo, mockCouponRepo)
 
 	t.Run("正常创建订单", func(t *testing.T) {
 		// 模拟用户存在
@@ -136,7 +183,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 		mockOrderRepo.On("GetByID", uint(1)).Return(createdOrder, nil).Once()
 
 		// 执行创建订单
-		order, err := orderService.CreateOrder(1, 1)
+		order, err := orderService.CreateOrder(1, 1, "")
 		assert.NoError(t, err)
 		assert.NotNil(t, order)
 		assert.Equal(t, uint(1), order.UserID)
@@ -151,7 +198,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 	t.Run("用户不存在", func(t *testing.T) {
 		mockUserRepo.On("GetByID", uint(999)).Return(nil, nil).Once()
 
-		order, err := orderService.CreateOrder(999, 1)
+		order, err := orderService.CreateOrder(999, 1, "")
 		assert.Error(t, err)
 		assert.Nil(t, order)
 		assert.Equal(t, "user not found", err.Error())
@@ -166,7 +213,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 		mockUserRepo.On("GetByID", uint(1)).Return(user, nil).Once()
 		mockPlanRepo.On("GetByID", uint(999)).Return(nil, nil).Once()
 
-		order, err := orderService.CreateOrder(1, 999)
+		order, err := orderService.CreateOrder(1, 999, "")
 		assert.Error(t, err)
 		assert.Nil(t, order)
 		assert.Equal(t, "plan not found", err.Error())
@@ -189,7 +236,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 		}
 		mockPlanRepo.On("GetByID", uint(1)).Return(plan, nil).Once()
 
-		order, err := orderService.CreateOrder(1, 1)
+		order, err := orderService.CreateOrder(1, 1, "")
 		assert.Error(t, err)
 		assert.Nil(t, order)
 		assert.Equal(t, "plan is not available", err.Error())
