@@ -61,6 +61,7 @@ api.interceptors.response.use(
         isLoggingOut = true
         useAuthStore.getState().logout()
         window.location.href = '/user/login'
+        setTimeout(() => { isLoggingOut = false }, 2000)
       }
       return Promise.reject(new Error(res.message || '登录已过期'))
     }
@@ -102,6 +103,7 @@ api.interceptors.response.use(
           isLoggingOut = true
           useAuthStore.getState().logout()
           window.location.href = '/user/login'
+          setTimeout(() => { isLoggingOut = false }, 2000)
         }
         return Promise.reject(refreshError)
       } finally {
