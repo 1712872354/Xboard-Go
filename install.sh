@@ -103,16 +103,12 @@ update_binary() {
 
     # 先停止服务（避免 Text file busy 错误）
     log_info "停止当前服务..."
-    if systemctl is-active --quiet xboard-go 2>/dev/null; then
-        systemctl stop xboard-go
-    else
-        if [[ -f "${DATA_DIR}/xboard-go.pid" ]]; then
-            kill $(cat "${DATA_DIR}/xboard-go.pid") 2>/dev/null || true
-            rm -f "${DATA_DIR}/xboard-go.pid"
-        fi
-        pkill -f "xboard-go -config" 2>/dev/null || true
-    fi
+    systemctl stop xboard-go 2>/dev/null || true
     sleep 1
+    # 强制杀死所有相关进程
+    killall xboard-go 2>/dev/null || true
+    pkill -9 -f "xboard-go" 2>/dev/null || true
+    sleep 2
 
     # 检测系统架构
     local arch=$(uname -m)
@@ -122,29 +118,30 @@ update_binary() {
         *) log_error "不支持的架构: $arch"; exit 1 ;;
     esac
 
-    # 下载新版本
+    # 先下载到临时文件，再替换（避免 Text file busy）
     local binary_url="${RELEASE_URL}/xboard-go-linux-${arch}"
+    local tmp_file="${INSTALL_DIR}/xboard-go.new"
     log_info "下载: ${binary_url}"
 
     if command -v curl &> /dev/null; then
-        curl -L -o "${INSTALL_DIR}/xboard-go" "${binary_url}"
+        curl -L -o "${tmp_file}" "${binary_url}"
     elif command -v wget &> /dev/null; then
-        wget -O "${INSTALL_DIR}/xboard-go" "${binary_url}"
+        wget -O "${tmp_file}" "${binary_url}"
     else
         log_error "需要 curl 或 wget"
         exit 1
     fi
 
+    # 替换二进制文件
+    mv "${tmp_file}" "${INSTALL_DIR}/xboard-go"
     chmod +x "${INSTALL_DIR}/xboard-go"
 
     # 启动服务
     log_info "启动服务..."
-    if systemctl is-enabled --quiet xboard-go 2>/dev/null; then
-        systemctl start xboard-go
-    else
+    systemctl start xboard-go 2>/dev/null || {
         nohup ${INSTALL_DIR}/xboard-go -config ${DATA_DIR}/config.yaml > ${DATA_DIR}/xboard-go.log 2>&1 &
         echo $! > ${DATA_DIR}/xboard-go.pid
-    fi
+    }
 
     log_info "二进制更新完成"
 }
