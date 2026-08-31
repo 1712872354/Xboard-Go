@@ -6,20 +6,23 @@
 # 支持 Docker / 二进制部署
 # ═══════════════════════════════════════════════════════════════
 
-set -e
-
-# 检测是否通过管道运行，如果是则重新从终端读取输入
+# 如果是通过管道运行的，先下载到临时文件再执行
 if [[ ! -t 0 ]]; then
-    if [[ -e /dev/tty ]]; then
-        exec < /dev/tty
+    echo "检测到管道运行模式，正在下载脚本..."
+    TMP_SCRIPT=$(mktemp /tmp/xboard-install-XXXXXX.sh)
+    if command -v curl &> /dev/null; then
+        curl -fsSL "https://raw.githubusercontent.com/1712872354/Xboard-Go/master/install.sh" -o "$TMP_SCRIPT"
+    elif command -v wget &> /dev/null; then
+        wget -q "https://raw.githubusercontent.com/1712872354/Xboard-Go/master/install.sh" -O "$TMP_SCRIPT"
     else
-        echo "错误: 无法读取终端输入，请下载脚本后运行:"
-        echo "  wget https://raw.githubusercontent.com/1712872354/Xboard-Go/master/install.sh"
-        echo "  chmod +x install.sh"
-        echo "  sudo ./install.sh"
+        echo "错误: 需要 curl 或 wget"
         exit 1
     fi
+    chmod +x "$TMP_SCRIPT"
+    exec bash "$TMP_SCRIPT" "$@"
 fi
+
+set -e
 
 # 颜色定义
 RED='\033[0;31m'
@@ -27,7 +30,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 # 项目信息
 REPO_OWNER="1712872354"
@@ -133,6 +136,26 @@ generate_random_string() {
     fi
 }
 
+# 安全读取输入
+safe_read() {
+    local prompt="$1"
+    local default="$2"
+    local result
+
+    read -p "$prompt" result < /dev/tty
+    result="${result:-$default}"
+    echo "$result"
+}
+
+safe_read_secret() {
+    local prompt="$1"
+    local result
+
+    read -sp "$prompt" result < /dev/tty
+    echo "" >&2
+    echo "$result"
+}
+
 # ═══════════════════════════════════════════════════════════════
 # 配置收集
 # ═══════════════════════════════════════════════════════════════
@@ -149,8 +172,7 @@ collect_config() {
     echo "  1) Docker 部署 (推荐，简单快速)"
     echo "  2) 二进制部署 (直接运行)"
     echo ""
-    read -p "请输入选项 [1]: " DEPLOY_METHOD
-    DEPLOY_METHOD=${DEPLOY_METHOD:-1}
+    DEPLOY_METHOD=$(safe_read "请输入选项 [1]: " "1")
 
     if [[ "$DEPLOY_METHOD" == "1" ]] && [[ "$DOCKER_AVAILABLE" == "false" ]]; then
         log_warn "Docker 未安装，将自动安装 Docker"
@@ -159,11 +181,8 @@ collect_config() {
 
     # 端口配置
     echo ""
-    read -p "请输入 HTTP 端口 [${DEFAULT_PORT}]: " HTTP_PORT
-    HTTP_PORT=${HTTP_PORT:-$DEFAULT_PORT}
-
-    read -p "请输入 gRPC 端口 [${DEFAULT_GRPC_PORT}]: " GRPC_PORT
-    GRPC_PORT=${GRPC_PORT:-$DEFAULT_GRPC_PORT}
+    HTTP_PORT=$(safe_read "请输入 HTTP 端口 [${DEFAULT_PORT}]: " "$DEFAULT_PORT")
+    GRPC_PORT=$(safe_read "请输入 gRPC 端口 [${DEFAULT_GRPC_PORT}]: " "$DEFAULT_GRPC_PORT")
 
     # 数据库配置
     echo ""
@@ -172,8 +191,7 @@ collect_config() {
     echo "  2) MySQL"
     echo "  3) PostgreSQL"
     echo ""
-    read -p "请输入选项 [1]: " DB_TYPE
-    DB_TYPE=${DB_TYPE:-1}
+    DB_TYPE=$(safe_read "请输入选项 [1]: " "1")
 
     case $DB_TYPE in
         1)
@@ -182,46 +200,32 @@ collect_config() {
             ;;
         2)
             DB_DRIVER="mysql"
-            read -p "MySQL 主机 [localhost]: " DB_HOST
-            DB_HOST=${DB_HOST:-localhost}
-            read -p "MySQL 端口 [3306]: " DB_PORT
-            DB_PORT=${DB_PORT:-3306}
-            read -p "MySQL 数据库名 [xboard]: " DB_NAME
-            DB_NAME=${DB_NAME:-xboard}
-            read -p "MySQL 用户名 [root]: " DB_USER
-            DB_USER=${DB_USER:-root}
-            read -sp "MySQL 密码: " DB_PASS
-            echo ""
+            DB_HOST=$(safe_read "MySQL 主机 [localhost]: " "localhost")
+            DB_PORT=$(safe_read "MySQL 端口 [3306]: " "3306")
+            DB_NAME=$(safe_read "MySQL 数据库名 [xboard]: " "xboard")
+            DB_USER=$(safe_read "MySQL 用户名 [root]: " "root")
+            DB_PASS=$(safe_read_secret "MySQL 密码: ")
             DB_SOURCE="${DB_USER}:${DB_PASS}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?charset=utf8mb4&parseTime=True&loc=Local"
             ;;
         3)
             DB_DRIVER="postgres"
-            read -p "PostgreSQL 主机 [localhost]: " DB_HOST
-            DB_HOST=${DB_HOST:-localhost}
-            read -p "PostgreSQL 端口 [5432]: " DB_PORT
-            DB_PORT=${DB_PORT:-5432}
-            read -p "PostgreSQL 数据库名 [xboard]: " DB_NAME
-            DB_NAME=${DB_NAME:-xboard}
-            read -p "PostgreSQL 用户名 [postgres]: " DB_USER
-            DB_USER=${DB_USER:-postgres}
-            read -sp "PostgreSQL 密码: " DB_PASS
-            echo ""
+            DB_HOST=$(safe_read "PostgreSQL 主机 [localhost]: " "localhost")
+            DB_PORT=$(safe_read "PostgreSQL 端口 [5432]: " "5432")
+            DB_NAME=$(safe_read "PostgreSQL 数据库名 [xboard]: " "xboard")
+            DB_USER=$(safe_read "PostgreSQL 用户名 [postgres]: " "postgres")
+            DB_PASS=$(safe_read_secret "PostgreSQL 密码: ")
             DB_SOURCE="host=${DB_HOST} user=${DB_USER} password=${DB_PASS} dbname=${DB_NAME} port=${DB_PORT} sslmode=disable"
             ;;
     esac
 
     # Redis 配置 (可选)
     echo ""
-    read -p "是否配置 Redis? (用于缓存和限流) [y/N]: " USE_REDIS
-    USE_REDIS=${USE_REDIS:-N}
+    USE_REDIS=$(safe_read "是否配置 Redis? (用于缓存和限流) [y/N]: " "N")
 
     if [[ "${USE_REDIS,,}" == "y" ]]; then
-        read -p "Redis 地址 [localhost:6379]: " REDIS_ADDR
-        REDIS_ADDR=${REDIS_ADDR:-localhost:6379}
-        read -sp "Redis 密码 (无密码直接回车): " REDIS_PASS
-        echo ""
-        read -p "Redis 数据库 [0]: " REDIS_DB
-        REDIS_DB=${REDIS_DB:-0}
+        REDIS_ADDR=$(safe_read "Redis 地址 [localhost:6379]: " "localhost:6379")
+        REDIS_PASS=$(safe_read_secret "Redis 密码 (无密码直接回车): ")
+        REDIS_DB=$(safe_read "Redis 数据库 [0]: " "0")
     fi
 
     # 管理员配置
@@ -231,11 +235,9 @@ collect_config() {
     echo -e "${CYAN}═══════════════════════════════════════════════════${NC}"
     echo ""
 
-    read -p "管理员邮箱 [admin@example.com]: " ADMIN_EMAIL
-    ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+    ADMIN_EMAIL=$(safe_read "管理员邮箱 [admin@example.com]: " "admin@example.com")
+    ADMIN_PASS=$(safe_read_secret "管理员密码: ")
 
-    read -sp "管理员密码: " ADMIN_PASS
-    echo ""
     if [[ -z "$ADMIN_PASS" ]]; then
         ADMIN_PASS=$(generate_random_string 12)
         log_info "已生成随机密码: ${ADMIN_PASS}"
@@ -243,10 +245,9 @@ collect_config() {
 
     # 站点配置
     echo ""
-    read -p "站点名称 [Xboard-Go]: " SITE_NAME
-    SITE_NAME=${SITE_NAME:-Xboard-Go}
+    SITE_NAME=$(safe_read "站点名称 [Xboard-Go]: " "Xboard-Go")
+    SITE_URL=$(safe_read "站点 URL (如 http://your-domain:${HTTP_PORT}): " "")
 
-    read -p "站点 URL (如 http://your-domain:${HTTP_PORT}): " SITE_URL
     if [[ -z "$SITE_URL" ]]; then
         SITE_URL="http://localhost:${HTTP_PORT}"
     fi
@@ -328,7 +329,6 @@ install_docker() {
     log_step "安装 Docker..."
 
     if [[ "$OS" == "linux" ]]; then
-        # 使用官方脚本安装 Docker
         curl -fsSL https://get.docker.com | bash
         systemctl enable docker
         systemctl start docker
@@ -349,15 +349,12 @@ install_docker() {
 deploy_docker() {
     log_step "使用 Docker 部署..."
 
-    # 停止旧容器
     docker stop xboard-go 2>/dev/null || true
     docker rm xboard-go 2>/dev/null || true
 
-    # 拉取镜像
     log_info "拉取 Docker 镜像..."
     docker pull ${DOCKER_IMAGE}
 
-    # 启动容器
     log_info "启动容器..."
     docker run -d \
         --name xboard-go \
@@ -379,7 +376,6 @@ deploy_binary() {
 
     mkdir -p "${INSTALL_DIR}"
 
-    # 下载二进制文件
     local binary_name="xboard-go-${OS}-${ARCH}"
     if [[ "$OS" == "windows" ]]; then
         binary_name="${binary_name}.exe"
@@ -399,7 +395,6 @@ deploy_binary() {
 
     chmod +x "${INSTALL_DIR}/xboard-go"
 
-    # 创建 systemd 服务
     if command -v systemctl &> /dev/null; then
         log_info "创建 systemd 服务..."
         cat > /etc/systemd/system/xboard-go.service << EOF
@@ -423,7 +418,6 @@ EOF
         systemctl start xboard-go
         log_info "systemd 服务已启动"
     else
-        # 直接运行
         log_info "启动 Xboard-Go..."
         nohup ${INSTALL_DIR}/xboard-go -config ${DATA_DIR}/config.yaml > ${DATA_DIR}/xboard-go.log 2>&1 &
         echo $! > ${DATA_DIR}/xboard-go.pid
@@ -438,11 +432,9 @@ EOF
 init_admin() {
     log_step "初始化管理员账户..."
 
-    # 等待服务启动
     log_info "等待服务启动..."
     sleep 5
 
-    # 检查服务是否启动
     local max_retries=30
     local retry=0
     while [[ $retry -lt $max_retries ]]; do
@@ -460,7 +452,6 @@ init_admin() {
 
     log_info "服务已启动"
 
-    # 注册管理员账户
     log_info "创建管理员账户..."
     local response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/api/v1/auth/register" \
         -H "Content-Type: application/json" \
@@ -475,10 +466,6 @@ init_admin() {
         log_warn "管理员账户可能已存在或创建失败"
     fi
 
-    # 设置管理员角色
-    log_info "设置管理员角色..."
-    # 这里需要通过数据库直接更新角色
-    # 由于不同数据库语法不同，我们提示用户手动设置
     log_warn "请手动将管理员角色设置为 admin:"
     echo ""
     if [[ "$DB_DRIVER" == "sqlite" ]]; then
@@ -546,41 +533,29 @@ show_result() {
 main() {
     print_banner
 
-    # 检测系统
     detect_os
     detect_arch
     log_info "检测到系统: ${OS} (${ARCH})"
 
-    # 检查 root 权限
     check_root
-
-    # 检查 Docker
     check_docker
 
-    # 收集配置
     collect_config
 
-    # 安装 Docker (如果需要)
     if [[ "$DEPLOY_METHOD" == "1" ]]; then
         install_docker
     fi
 
-    # 生成配置文件
     generate_config
 
-    # 部署
     if [[ "$DEPLOY_METHOD" == "1" ]]; then
         deploy_docker
     else
         deploy_binary
     fi
 
-    # 初始化管理员
     init_admin
-
-    # 显示结果
     show_result
 }
 
-# 运行主流程
 main "$@"
