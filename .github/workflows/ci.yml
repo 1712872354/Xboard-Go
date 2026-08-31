@@ -33,24 +33,25 @@ jobs:
       - name: Cache pnpm modules
         uses: actions/cache@v4
         with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          path: |
+            frontend/node_modules
+            node_modules
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
-        working-directory: frontend
         run: pnpm install --no-frozen-lockfile
 
       - name: Build frontend
-        working-directory: frontend
-        run: pnpm run build
+        run: pnpm --filter frontend run build
 
       - name: Upload frontend dist
         uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
           path: frontend/dist/
+          if-no-files-found: error
           retention-days: 1
 
   # ── Backend Build ──────────────────────────────────────────
