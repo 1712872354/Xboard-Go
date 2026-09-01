@@ -2,7 +2,6 @@ package repository
 
 import (
 	"errors"
-	"time"
 
 	"xboard-go/internal/model"
 	"xboard-go/pkg/database"
@@ -19,10 +18,9 @@ type ServerMachineRepository interface {
 	Delete(id uint) error
 	List(page, pageSize int) ([]model.ServerMachine, int64, error)
 	ListAll() ([]model.ServerMachine, error)
-	UpdateStatus(id uint, status int) error
+	UpdateStatus(id uint, isActive bool) error
 	UpdateLoad(id uint, cpu, memory, disk float64) error
 	UpdateToken(id uint, token string) error
-	UpdateMachineStatus(id uint, cpu, memory, disk float64, uptime int64) error
 }
 
 type serverMachineRepository struct {
@@ -94,8 +92,8 @@ func (r *serverMachineRepository) ListAll() ([]model.ServerMachine, error) {
 }
 
 // UpdateStatus 更新服务器机器状态
-func (r *serverMachineRepository) UpdateStatus(id uint, status int) error {
-	return r.db.Model(&model.ServerMachine{}).Where("id = ?", id).Update("status", status).Error
+func (r *serverMachineRepository) UpdateStatus(id uint, isActive bool) error {
+	return r.db.Model(&model.ServerMachine{}).Where("id = ?", id).Update("is_active", isActive).Error
 }
 
 // UpdateLoad 更新服务器机器负载
@@ -123,19 +121,6 @@ func (r *serverMachineRepository) GetByToken(token string) (*model.ServerMachine
 // UpdateToken 更新服务器机器Token
 func (r *serverMachineRepository) UpdateToken(id uint, token string) error {
 	return r.db.Model(&model.ServerMachine{}).Where("id = ?", id).Update("token", token).Error
-}
-
-// UpdateMachineStatus 更新服务器机器状态（来自节点上报）
-func (r *serverMachineRepository) UpdateMachineStatus(id uint, cpu, memory, disk float64, uptime int64) error {
-	now := time.Now()
-	return r.db.Model(&model.ServerMachine{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"cpu":           cpu,
-		"memory":        memory,
-		"disk":          disk,
-		"uptime":        uptime,
-		"status":        1,
-		"last_check_at": now,
-	}).Error
 }
 
 // ServerMachineLoadHistoryRepository 服务器机器负载历史仓储接口

@@ -14,6 +14,14 @@ type Plan struct {
 	ResetTrafficMethod int       `gorm:"default:5" json:"reset_traffic_method"` // 流量重置方式，5=跟随系统
 	Description        string    `gorm:"type:text" json:"description"`
 	Status             int       `gorm:"default:1" json:"status"`          // 1: 上架, 0: 下架
+	SpeedLimit         *int      `json:"speed_limit"`                     // 套餐级限速（Mbps）
+	Sell               bool      `gorm:"default:true" json:"sell"`        // 是否允许购买
+	Renew              bool      `gorm:"default:true" json:"renew"`       // 是否允许续费
+	CapacityLimit      *int      `json:"capacity_limit"`                  // 订阅人数限制
+	Tags               string    `gorm:"type:varchar(500)" json:"tags"`   // 套餐标签（逗号分隔）
+	Sort               int       `gorm:"default:0" json:"sort"`           // 排序
+	Content            string    `gorm:"type:text" json:"content"`        // 套餐说明（Markdown）
+	Prices             string    `gorm:"type:text" json:"prices"`         // 多周期价格（JSON）
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }

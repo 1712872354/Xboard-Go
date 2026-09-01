@@ -15,8 +15,10 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Plus, Pencil, Trash2, Copy, Users, DollarSign, Wallet } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Plus, Pencil, Trash2, Copy, Users, DollarSign, Wallet, Search } from 'lucide-react'
 
 const useAdminInviteCodes = (page = 1, pageSize = 20) =>
   useQuery({
@@ -67,6 +69,9 @@ export default function InviteCodesPage() {
   const [logPage, setLogPage] = useState(1)
   const [dialog, setDialog] = useState<'create' | 'edit' | null>(null)
   const [editItem, setEditItem] = useState<InviteCode | null>(null)
+  const [codeSearch, setCodeSearch] = useState('')
+  const [commissionFilter, setCommissionFilter] = useState('all')
+  const [selectedLogs, setSelectedLogs] = useState<Set<number>>(new Set())
 
   const { data: codes, isLoading: loadingCodes } = useAdminInviteCodes(codePage)
   const { data: logs, isLoading: loadingLogs } = useAdminCommissionLogs(logPage)
@@ -76,8 +81,31 @@ export default function InviteCodesPage() {
 
   const allCodes = codes?.list ?? []
   const allLogs = logs?.list ?? []
+  const filteredLogs = commissionFilter === 'all' ? allLogs : allLogs.filter((l) => String(l.status) === commissionFilter)
   const pendingCommission = allLogs.filter((l) => l.status === 0).reduce((sum, l) => sum + l.commission, 0)
   const settledCommission = allLogs.filter((l) => l.status === 1).reduce((sum, l) => sum + l.commission, 0)
+
+  const filteredCodes = codeSearch
+    ? allCodes.filter((c) => c.code.toLowerCase().includes(codeSearch.toLowerCase()))
+    : allCodes
+
+  const toggleLog = (id: number) => {
+    setSelectedLogs((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const handleBatchSettle = async () => {
+    const pending = allLogs.filter((l) => selectedLogs.has(l.id) && l.status === 0)
+    let ok = 0, fail = 0
+    for (const l of pending) {
+      try { await new Promise<void>((res, rej) => settleCommission.mutate(l.id, { onSuccess: () => res(), onError: rej })); ok++ } catch { fail++ }
+    }
+    setSelectedLogs(new Set())
+    toast.success(`批量结算完成：成功 ${ok}，失败 ${fail}`)
+  }
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<InviteCodeForm>({
     resolver: zodResolver(inviteCodeSchema),
@@ -148,8 +176,14 @@ export default function InviteCodesPage() {
         <TabsContent value="codes">
           <Card>
             <CardHeader>
-              <div className="flex justify-end">
-                <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />新建邀请码</Button>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 max-w-xs">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="搜索邀请码..." className="pl-8" value={codeSearch} onChange={(e) => setCodeSearch(e.target.value)} />
+                </div>
+                <div className="ml-auto">
+                  <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />新建邀请码</Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -169,7 +203,7 @@ export default function InviteCodesPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {allCodes.map((c) => (
+                      {filteredCodes.map((c) => (
                         <TableRow key={c.id}>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -210,7 +244,25 @@ export default function InviteCodesPage() {
 
         <TabsContent value="logs">
           <Card>
-            <CardHeader />
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Select value={commissionFilter} onValueChange={setCommissionFilter}>
+                  <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部</SelectItem>
+                    <SelectItem value="0">待结算</SelectItem>
+                    <SelectItem value="1">已结算</SelectItem>
+                  </SelectContent>
+                </Select>
+                {selectedLogs.size > 0 && (
+                  <div className="ml-auto">
+                    <Button size="sm" onClick={handleBatchSettle}>
+                      <DollarSign className="mr-1 h-4 w-4" />批量结算 ({selectedLogs.size})
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </CardHeader>
             <CardContent>
               {loadingLogs ? (
                 <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
@@ -219,6 +271,15 @@ export default function InviteCodesPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={allLogs.filter((l) => l.status === 0).length > 0 && allLogs.filter((l) => l.status === 0).every((l) => selectedLogs.has(l.id))}
+                            onCheckedChange={(v) => {
+                              if (v) setSelectedLogs(new Set(allLogs.filter((l) => l.status === 0).map((l) => l.id)))
+                              else setSelectedLogs(new Set())
+                            }}
+                          />
+                        </TableHead>
                         <TableHead>邀请人</TableHead>
                         <TableHead>被邀请人</TableHead>
                         <TableHead>订单金额</TableHead>
@@ -229,8 +290,15 @@ export default function InviteCodesPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {allLogs.map((l) => (
-                        <TableRow key={l.id}>
+                      {filteredLogs.map((l) => (
+                        <TableRow key={l.id} data-state={selectedLogs.has(l.id) ? 'selected' : undefined}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedLogs.has(l.id)}
+                              disabled={l.status !== 0}
+                              onCheckedChange={() => toggleLog(l.id)}
+                            />
+                          </TableCell>
                           <TableCell>{l.user_id}</TableCell>
                           <TableCell>{l.from_user_email ?? l.from_user_id}</TableCell>
                           <TableCell>{formatCurrency(l.order_amount)}</TableCell>

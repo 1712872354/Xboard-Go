@@ -20,6 +20,8 @@ type Coupon struct {
 	StartDate    *time.Time `json:"start_date"`                                       // 开始时间
 	EndDate      *time.Time `json:"end_date"`                                         // 结束时间
 	Status       int       `gorm:"default:1" json:"status"`                           // 状态：1启用，0禁用
+	LimitPeriod      string `gorm:"type:varchar(255)" json:"limit_period"`             // 指定可用周期（逗号分隔）
+	LimitUseWithUser *int   `json:"limit_use_with_user"`                              // 每用户可用次数
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }

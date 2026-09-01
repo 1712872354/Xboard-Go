@@ -148,7 +148,7 @@ func (s *nodeHealthService) CheckNode(node *model.Node) bool {
 		timeout = 5 * time.Second
 	}
 
-	addr := net.JoinHostPort(node.Address, fmt.Sprintf("%d", checkPort))
+	addr := net.JoinHostPort(node.Host, fmt.Sprintf("%d", checkPort))
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
 		logger.Sugar().Debugf("Health check failed for node %d (%s): %v", node.ID, addr, err)
@@ -177,12 +177,15 @@ func (s *nodeHealthService) CheckMachineOffline() {
 	offlineThreshold := now.Add(-s.machineOfflineTimeout)
 
 	for _, machine := range machines {
-		if machine.Status == 1 && machine.LastCheckAt != nil && machine.LastCheckAt.Before(offlineThreshold) {
-			if err := s.machineRepo.UpdateStatus(machine.ID, 0); err != nil {
-				logger.Sugar().Errorf("Health check: failed to mark machine %d offline: %v", machine.ID, err)
-			} else {
-				logger.Sugar().Infof("Health check: marked machine %d offline (last check: %s)",
-					machine.ID, machine.LastCheckAt.Format(time.RFC3339))
+		if machine.IsActive && machine.LastSeenAt > 0 {
+			lastSeen := time.Unix(machine.LastSeenAt, 0)
+			if lastSeen.Before(offlineThreshold) {
+				if err := s.machineRepo.UpdateStatus(machine.ID, false); err != nil {
+					logger.Sugar().Errorf("Health check: failed to mark machine %d offline: %v", machine.ID, err)
+				} else {
+					logger.Sugar().Infof("Health check: marked machine %d offline (last seen: %s)",
+						machine.ID, lastSeen.Format(time.RFC3339))
+				}
 			}
 		}
 	}

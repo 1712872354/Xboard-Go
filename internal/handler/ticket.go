@@ -223,6 +223,7 @@ func (h *TicketHandler) GetUserStats(c *gin.Context) {
 // @Param page_size query int false "每页数量" default(20)
 // @Param status query int false "状态筛选 (-1=全部)" default(-1)
 // @Param category query int false "分类筛选 (-1=全部)" default(-1)
+// @Param keyword query string false "搜索关键词（匹配用户邮箱）"
 // @Success 200 {object} response.Response
 // @Router /api/v1/admin/tickets [get]
 func (h *TicketHandler) ListAllTickets(c *gin.Context) {
@@ -230,8 +231,9 @@ func (h *TicketHandler) ListAllTickets(c *gin.Context) {
 	pageSize := atoi(c.DefaultQuery("page_size", "20"))
 	status := atoi(c.DefaultQuery("status", "-1"))
 	category := atoi(c.DefaultQuery("category", "-1"))
+	keyword := c.Query("keyword")
 
-	tickets, total, err := h.ticketService.ListAllTickets(page, pageSize, status, category)
+	tickets, total, err := h.ticketService.ListAllTickets(page, pageSize, status, category, keyword)
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return

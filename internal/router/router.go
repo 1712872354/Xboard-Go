@@ -87,6 +87,7 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	planService := service.NewPlanService(planRepo)
 	orderService := service.NewOrderService(orderRepo, planRepo, userRepo, couponRepo)
 	subscribeService := service.NewSubscribeService(userRepo, nodeRepo, planRepo)
+	userServerService := service.NewUserServerService(userRepo, nodeRepo, planRepo)
 	nodeService := service.NewNodeService(nodeRepo)
 	trafficService := service.NewTrafficService()
 	_ = trafficService // used by gRPC server
@@ -118,13 +119,16 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	deviceService := service.NewDeviceService(userRepo, nodeRepo)
 	paymentGatewayService := service.NewPaymentGatewayService(paymentRepo)
 	telegramService := service.NewTelegramService()
+	sessionService := service.NewSessionService(userRepo)
 
 	// 初始化处理器
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
 	planHandler := handler.NewPlanHandler(planService)
 	orderHandler := handler.NewOrderHandler(orderService)
+	orderCheckoutHandler := handler.NewOrderCheckoutHandler(orderService, paymentService)
 	subscribeHandler := handler.NewSubscribeHandler(subscribeService)
+	userServerHandler := handler.NewUserServerHandler(userServerService)
 	nodeHandler := handler.NewNodeHandler(nodeService)
 	trafficHandler := handler.NewTrafficHandler(trafficService)
 	paymentHandler := handler.NewPaymentHandler(paymentService)
@@ -147,6 +151,20 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	deviceHandler := handler.NewDeviceHandler(deviceService)
 	paymentGatewayHandler := handler.NewPaymentGatewayHandler(paymentGatewayService)
 	telegramHandler := handler.NewTelegramHandler(telegramService)
+	sessionHandler := handler.NewSessionHandler(sessionService)
+	sortHandler := handler.NewSortHandler()
+	showHandler := handler.NewShowHandler()
+	adminUserEnhancedHandler := handler.NewAdminUserEnhancedHandler()
+	ticketEnhancedHandler := handler.NewTicketEnhancedHandler()
+	themeHandler := handler.NewThemeHandler("themes")
+	pluginAdvancedHandler := handler.NewPluginAdvancedHandler("plugins")
+	trafficResetHandler := handler.NewTrafficResetHandler()
+	statsAdvancedHandler := handler.NewStatsAdvancedHandler()
+	giftCardAdvancedHandler := handler.NewGiftCardAdvancedHandler()
+	quickLoginHandler := handler.NewQuickLoginHandler()
+	queueHandler := handler.NewQueueHandler()
+	templateHandler := handler.NewTemplateHandler()
+	telegramBotHandler := handler.NewTelegramBotHandler()
 	systemHandler := handler.NewSystemHandler()
 	updateHandler := handler.NewUpdateHandler(cfg.App.Version)
 	commHandler := handler.NewCommHandler()
@@ -172,6 +190,17 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				auth.POST("/reset", authHandler.ResetPassword)
 				auth.POST("/send-code", authHandler.SendVerificationCode)
 				auth.POST("/verify", authHandler.VerifyEmail)
+				auth.GET("/quick-login", quickLoginHandler.QuickLogin)
+				auth.GET("/mail-link-login", quickLoginHandler.LoginWithMailLink)
+				auth.POST("/send-mail-login-link", quickLoginHandler.SendMailLoginLink)
+			}
+
+			// 需要认证的认证路由
+			authAuth := apiV1.Group("/auth")
+			authAuth.Use(middleware.JWTAuth())
+			{
+				authAuth.POST("/quick-login-url", quickLoginHandler.GetQuickLoginUrl)
+				authAuth.GET("/token2login", quickLoginHandler.Token2Login)
 			}
 
 			// 套餐列表（公开）
@@ -198,6 +227,14 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 			user.GET("/traffic/stats", trafficHandler.GetStats)
 			user.GET("/traffic/history", trafficHandler.GetHistory)
 			user.GET("/traffic/daily", trafficHandler.GetDailyTraffic)
+
+			// 服务器列表（用户端）
+			user.GET("/servers", userServerHandler.FetchServers)
+
+			// 会话管理
+			user.GET("/sessions", sessionHandler.GetActiveSessions)
+			user.POST("/sessions/remove", sessionHandler.RemoveSession)
+			user.GET("/check-login", sessionHandler.CheckLogin)
 		}
 
 		// 订单路由（需要认证）
@@ -208,6 +245,12 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 			orders.GET("", orderHandler.ListOrders)
 			orders.GET("/:id", orderHandler.GetOrder)
 			orders.POST("/:id/cancel", orderHandler.CancelOrder)
+
+			// 订单结账相关
+			orders.POST("/checkout", orderCheckoutHandler.Checkout)
+			orders.GET("/check", orderCheckoutHandler.CheckOrder)
+			orders.GET("/detail", orderCheckoutHandler.GetOrderDetail)
+			orders.GET("/payment-methods", orderCheckoutHandler.GetUserPaymentMethods)
 		}
 
 		// 支付路由
@@ -245,6 +288,8 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 			tickets.GET("/:id", ticketHandler.GetTicket)
 			tickets.POST("/:id/reply", ticketHandler.Reply)
 			tickets.POST("/:id/close", ticketHandler.CloseTicket)
+			tickets.POST("/:id/withdraw", ticketEnhancedHandler.WithdrawTicket)
+			tickets.GET("/:id/messages", ticketEnhancedHandler.GetTicketMessages)
 		}
 
 		// 管理员路由
@@ -262,6 +307,10 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminUsers.DELETE("/:id", userHandler.DeleteUser)
 				adminUsers.POST("/generate", userHandler.GenerateUsers)
 				adminUsers.GET("/export", userHandler.ExportUsersCSV)
+				adminUsers.POST("/send-mail", adminUserEnhancedHandler.SendMailToUsers)
+				adminUsers.POST("/reset-secret", adminUserEnhancedHandler.ResetUserSecret)
+				adminUsers.POST("/set-inviter", adminUserEnhancedHandler.SetInviteUser)
+				adminUsers.POST("/transfer-balance", adminUserEnhancedHandler.TransferBalance)
 			}
 
 			// 套餐管理
@@ -271,14 +320,16 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminPlans.POST("", planHandler.CreatePlan)
 				adminPlans.PUT("/:id", planHandler.UpdatePlan)
 				adminPlans.DELETE("/:id", planHandler.DeletePlan)
+				adminPlans.POST("/sort", sortHandler.SortPlans)
 			}
 
 			// 订单管理
-			adminOrders := admin.Group("/orders")
-			{
-				adminOrders.GET("", orderHandler.ListAllOrders)
-				adminOrders.POST("/confirm-payment", orderHandler.ConfirmPayment)
-			}
+		adminOrders := admin.Group("/orders")
+		{
+			adminOrders.GET("", orderHandler.ListAllOrders)
+			adminOrders.POST("/confirm-payment", orderHandler.ConfirmPayment)
+			adminOrders.POST("/assign", orderHandler.AssignOrder)
+		}
 
 			// 节点管理
 			adminNodes := admin.Group("/nodes")
@@ -294,6 +345,8 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminNodes.POST("/:id/reset-traffic", nodeHandler.ResetNodeTraffic)
 				adminNodes.POST("/batch", nodeHandler.BatchNodes)
 				adminNodes.POST("/batch-reset-traffic", nodeHandler.BatchResetNodeTraffic)
+				adminNodes.POST("/sort", nodeHandler.SortNodes)
+				adminNodes.POST("/batch-update", nodeHandler.BatchUpdateNodes)
 			}
 
 			// 节点模板管理
@@ -307,10 +360,20 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 			}
 
 			// 流量管理
-			adminTraffic := admin.Group("/traffic")
-			{
-				adminTraffic.POST("/sync", trafficHandler.SyncTraffic)
-			}
+		adminTraffic := admin.Group("/traffic")
+		{
+			adminTraffic.POST("/sync", trafficHandler.SyncTraffic)
+			adminTraffic.GET("/logs", trafficHandler.ListTrafficLogs)
+		}
+
+		// 流量重置管理
+		adminTrafficReset := admin.Group("/traffic-reset")
+		{
+			adminTrafficReset.GET("/logs", trafficResetHandler.GetTrafficResetLogs)
+			adminTrafficReset.GET("/stats", trafficResetHandler.GetTrafficResetStats)
+			adminTrafficReset.GET("/user/:id/history", trafficResetHandler.GetUserTrafficResetHistory)
+			adminTrafficReset.POST("/reset-user", trafficResetHandler.ResetUserTraffic)
+		}
 
 			// 设备状态管理
 			adminDevices := admin.Group("/devices")
@@ -341,6 +404,7 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminTickets.POST("/:id/reply", ticketHandler.Reply)
 				adminTickets.POST("/:id/close", ticketHandler.CloseTicket)
 				adminTickets.DELETE("/:id", ticketHandler.DeleteTicket)
+				adminTickets.GET("/:id/messages", ticketEnhancedHandler.GetTicketMessages)
 			}
 
 			// 数据看板
@@ -359,6 +423,16 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminDashboard.GET("/comprehensive-stats", dashboardHandler.GetComprehensiveStats)
 			}
 
+			// 统计报表增强
+			adminStats := admin.Group("/stats")
+			{
+				adminStats.GET("/server-ranking", statsAdvancedHandler.GetServerRanking)
+				adminStats.GET("/server-yesterday-ranking", statsAdvancedHandler.GetServerYesterdayRanking)
+				adminStats.GET("/orders", statsAdvancedHandler.GetOrderStats)
+				adminStats.GET("/users", statsAdvancedHandler.GetUserStats)
+				adminStats.GET("/records", statsAdvancedHandler.GetStatRecords)
+			}
+
 			// 系统设置
 			adminSettings := admin.Group("/settings")
 			{
@@ -369,6 +443,8 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminSettings.PUT("/:key", settingHandler.UpdateSetting)
 				adminSettings.DELETE("/:key", settingHandler.DeleteSetting)
 				adminSettings.POST("/test-email", settingHandler.TestSendEmail)
+				adminSettings.GET("/email-template", templateHandler.GetEmailTemplate)
+				adminSettings.GET("/theme-template", templateHandler.GetThemeTemplate)
 			}
 
 			// 公告管理
@@ -379,6 +455,8 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminNotices.GET("/:id", noticeHandler.GetNotice)
 				adminNotices.PUT("/:id", noticeHandler.UpdateNotice)
 				adminNotices.DELETE("/:id", noticeHandler.DeleteNotice)
+				adminNotices.POST("/sort", sortHandler.SortNotices)
+				adminNotices.PUT("/:id/show", showHandler.UpdateNoticeShow)
 			}
 
 			// 知识库管理
@@ -389,17 +467,21 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminKnowledges.GET("/:id", knowledgeHandler.GetKnowledge)
 				adminKnowledges.PUT("/:id", knowledgeHandler.UpdateKnowledge)
 				adminKnowledges.DELETE("/:id", knowledgeHandler.DeleteKnowledge)
+				adminKnowledges.POST("/sort", sortHandler.SortKnowledges)
+				adminKnowledges.PUT("/:id/show", showHandler.UpdateKnowledgeShow)
 			}
 
 			// 邮件模板管理
-			adminMailTemplates := admin.Group("/mail-templates")
-			{
-				adminMailTemplates.GET("", mailTemplateHandler.ListMailTemplates)
-				adminMailTemplates.POST("", mailTemplateHandler.CreateMailTemplate)
-				adminMailTemplates.GET("/:id", mailTemplateHandler.GetMailTemplate)
-				adminMailTemplates.PUT("/:id", mailTemplateHandler.UpdateMailTemplate)
-				adminMailTemplates.DELETE("/:id", mailTemplateHandler.DeleteMailTemplate)
-			}
+		adminMailTemplates := admin.Group("/mail-templates")
+		{
+			adminMailTemplates.GET("", mailTemplateHandler.ListMailTemplates)
+			adminMailTemplates.POST("", mailTemplateHandler.CreateMailTemplate)
+			adminMailTemplates.GET("/:id", mailTemplateHandler.GetMailTemplate)
+			adminMailTemplates.PUT("/:id", mailTemplateHandler.UpdateMailTemplate)
+			adminMailTemplates.DELETE("/:id", mailTemplateHandler.DeleteMailTemplate)
+			adminMailTemplates.PUT("/:id/reset", mailTemplateHandler.ResetMailTemplate)
+			adminMailTemplates.POST("/:id/test", mailTemplateHandler.TestMailTemplate)
+		}
 
 			// 优惠券管理
 			adminCoupons := admin.Group("/coupons")
@@ -409,6 +491,7 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminCoupons.GET("/:id", couponHandler.GetCoupon)
 				adminCoupons.PUT("/:id", couponHandler.UpdateCoupon)
 				adminCoupons.DELETE("/:id", couponHandler.DeleteCoupon)
+				adminCoupons.PUT("/:id/show", showHandler.UpdateCouponShow)
 			}
 
 			// 礼品卡模板管理
@@ -428,6 +511,12 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminGiftCardCodes.POST("/generate", giftCardHandler.GenerateCodes)
 				adminGiftCardCodes.GET("/:id", giftCardHandler.GetCode)
 				adminGiftCardCodes.DELETE("/:id", giftCardHandler.DeleteCode)
+				adminGiftCardCodes.PUT("/:id/toggle", giftCardAdvancedHandler.ToggleCode)
+				adminGiftCardCodes.PUT("/:id", giftCardAdvancedHandler.UpdateCode)
+				adminGiftCardCodes.GET("/:id/usages", giftCardAdvancedHandler.GetCodeUsages)
+				adminGiftCardCodes.GET("/export", giftCardAdvancedHandler.ExportCodes)
+				adminGiftCardCodes.GET("/statistics", giftCardAdvancedHandler.GetStatistics)
+				adminGiftCardCodes.GET("/types", giftCardAdvancedHandler.GetTypes)
 			}
 
 			// 邀请码管理
@@ -482,6 +571,8 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminServerMachines.PUT("/:id/load", serverMachineHandler.UpdateServerMachineLoad)
 				adminServerMachines.POST("/:id/reset-token", serverMachineHandler.ResetToken)
 				adminServerMachines.GET("/:id/install-command", serverMachineHandler.GetInstallCommand)
+				adminServerMachines.GET("/:id/nodes", serverMachineHandler.GetMachineNodes)
+				adminServerMachines.GET("/:id/load-history", serverMachineHandler.GetLoadHistory)
 			}
 
 			// 插件管理
@@ -489,12 +580,21 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 			{
 				adminPlugins.GET("", pluginHandler.ListPlugins)
 				adminPlugins.POST("", pluginHandler.CreatePlugin)
+				adminPlugins.POST("/upload", pluginHandler.UploadPlugin)
 				adminPlugins.GET("/:id", pluginHandler.GetPlugin)
 				adminPlugins.PUT("/:id", pluginHandler.UpdatePlugin)
 				adminPlugins.DELETE("/:id", pluginHandler.DeletePlugin)
 				adminPlugins.PUT("/:id/status", pluginHandler.UpdatePluginStatus)
 				adminPlugins.POST("/:id/enable", pluginHandler.EnablePlugin)
 				adminPlugins.POST("/:id/disable", pluginHandler.DisablePlugin)
+				adminPlugins.GET("/types", pluginAdvancedHandler.GetPluginTypes)
+				adminPlugins.POST("/:id/install", pluginAdvancedHandler.InstallPlugin)
+				adminPlugins.POST("/:id/uninstall", pluginAdvancedHandler.UninstallPlugin)
+				adminPlugins.GET("/:id/config", pluginAdvancedHandler.GetPluginConfig)
+				adminPlugins.PUT("/:id/config", pluginAdvancedHandler.UpdatePluginConfig)
+				adminPlugins.POST("/:id/upgrade", pluginAdvancedHandler.UpgradePlugin)
+				adminPlugins.GET("/:id/config-template", pluginAdvancedHandler.GetPluginConfigTemplate)
+				adminPlugins.POST("/reload", pluginAdvancedHandler.ReloadPlugins)
 			}
 
 			// 审计日志管理
@@ -515,12 +615,19 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminPaymentGateways.DELETE("/:id", paymentGatewayHandler.DeleteGateway)
 				adminPaymentGateways.PUT("/:id/status", paymentGatewayHandler.UpdateGatewayStatus)
 				adminPaymentGateways.PUT("/:id/sort", paymentGatewayHandler.UpdateGatewaySort)
+				adminPaymentGateways.POST("/sort", sortHandler.SortPayments)
 			}
 
 			// Telegram 管理
 			adminTelegram := admin.Group("/telegram")
 			{
 				adminTelegram.POST("/set-webhook", telegramHandler.SetWebhook)
+			}
+
+			// Telegram Bot信息（用户端）
+			publicTelegram := apiV1.Group("/telegram")
+			{
+				publicTelegram.GET("/bot-info", telegramBotHandler.GetBotInfo)
 			}
 
 			// 系统管理
@@ -531,6 +638,28 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 				adminSystem.GET("/scheduler", systemHandler.GetSchedulerStatus)
 				adminSystem.GET("/check-update", updateHandler.CheckUpdate)
 				adminSystem.POST("/execute-update", updateHandler.ExecuteUpdate)
+			}
+
+			// 队列管理
+			adminQueue := admin.Group("/system/queue")
+			{
+				adminQueue.GET("/stats", queueHandler.GetQueueStats)
+				adminQueue.GET("/workload", queueHandler.GetQueueWorkload)
+				adminQueue.GET("/failed-jobs", queueHandler.GetFailedJobs)
+				adminQueue.POST("/failed-jobs/:id/retry", queueHandler.RetryFailedJob)
+				adminQueue.DELETE("/failed-jobs/:id", queueHandler.DeleteFailedJob)
+				adminQueue.POST("/failed-jobs/clear", queueHandler.ClearFailedJobs)
+			}
+
+			// 主题管理
+			adminThemes := admin.Group("/themes")
+			{
+				adminThemes.GET("", themeHandler.ListThemes)
+				adminThemes.GET("/:id", themeHandler.GetTheme)
+				adminThemes.GET("/:id/config", themeHandler.GetThemeConfig)
+				adminThemes.PUT("/:id/config", themeHandler.UpdateThemeConfig)
+				adminThemes.PUT("/:id/default", themeHandler.SetDefaultTheme)
+				adminThemes.DELETE("/:id", themeHandler.DeleteTheme)
 			}
 		}
 
@@ -562,6 +691,12 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 			publicKnowledges.GET("/categories", knowledgeHandler.GetCategories)
 		}
 
+		// 公开主题接口（无需认证）
+		publicThemes := apiV1.Group("/themes")
+		{
+			publicThemes.GET("/current", themeHandler.GetPublicTheme)
+		}
+
 		// 用户优惠券接口（需要认证）
 		userCoupons := apiV1.Group("/coupons")
 		userCoupons.Use(middleware.JWTAuth())
@@ -574,6 +709,9 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 		userGiftCards.Use(middleware.JWTAuth())
 		{
 			userGiftCards.POST("/use", giftCardHandler.UseCode)
+			userGiftCards.GET("/history", giftCardAdvancedHandler.GetUserGiftCardHistory)
+			userGiftCards.GET("/types", giftCardAdvancedHandler.GetUserGiftCardTypes)
+			userGiftCards.GET("/:id", giftCardAdvancedHandler.GetUserGiftCardDetail)
 		}
 
 		// 用户邀请码接口（需要认证）
@@ -585,6 +723,7 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 			userInvite.GET("/commission/stats", inviteHandler.GetCommissionStats)
 			userInvite.GET("/commission/logs", inviteHandler.ListCommissionLogs)
 			userInvite.POST("/commission/withdraw", inviteHandler.WithdrawCommission)
+			userInvite.GET("/details", telegramBotHandler.CheckInviteDetails)
 		}
 	}
 

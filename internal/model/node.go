@@ -2,6 +2,8 @@ package model
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -25,19 +27,31 @@ const (
 type Node struct {
 	ID                  uint       `gorm:"primaryKey" json:"id"`
 	Name                string     `gorm:"type:varchar(100);not null" json:"name"`
-	Type                string     `gorm:"type:varchar(20);not null" json:"type"` // vmess, vless, trojan, shadowsocks, hysteria2, hysteria, tuic, anytls, naive, socks, http, mieru
-	Address             string     `gorm:"type:varchar(255);not null" json:"address"`
-	Port                int        `gorm:"not null" json:"port"`
-	ServerInfo          string     `gorm:"type:text" json:"server_info"` // JSON格式，存储额外配置（加密方式、传输协议等）
-	GroupID             uint       `gorm:"default:0;index" json:"group_id"`
-	Rate                float64    `gorm:"type:decimal(5,2);default:1.0" json:"rate"` // 流量倍率
-	Status              int        `gorm:"default:1" json:"status"`                   // 1: 在线, 0: 离线, 2: 维护中
+	Type                string     `gorm:"type:varchar(20);not null" json:"type"`
+	Host                string     `gorm:"type:varchar(255)" json:"host"`               // 主机地址
+	Port                int        `gorm:"not null" json:"port"`                        // 客户端连接端口
+	ServerPort          int        `gorm:"default:0" json:"server_port"`               // 后端服务端口
+	Code                string     `gorm:"type:varchar(255)" json:"code"`              // 节点标识符（原版: spectific_key/code）
+	ServerInfo          string     `gorm:"type:text" json:"server_info"`               // JSON格式，存储协议设置
+	GroupIDs            string     `gorm:"type:varchar(255);default:'';index" json:"group_ids"` // 逗号分隔的权限组ID，如 "1,2,3"
+	Rate                float64    `gorm:"type:decimal(5,2);default:1.0" json:"rate"`
+	Status              int        `gorm:"default:1" json:"status"`
 	ParentID            uint       `gorm:"default:0" json:"parent_id"`
-	Sort                int        `gorm:"default:0;index" json:"sort"`        // 排序值，越小越靠前
-	Show                int        `gorm:"default:1" json:"show"`              // 是否在订阅中显示：1显示，0隐藏
-	Tags                string     `gorm:"type:varchar(500)" json:"tags"`      // 标签，逗号分隔
-	OnlineUserCount     int        `gorm:"default:0" json:"online_user_count"` // 当前在线用户数
-	TrafficUsed         int64      `gorm:"default:0" json:"traffic_used"`      // 节点累计已用流量（字节）
+	MachineID           *uint      `gorm:"index" json:"machine_id"`
+	Enabled             bool       `gorm:"default:true" json:"enabled"`
+	Sort                int        `gorm:"default:0;index" json:"sort"`
+	Show                int        `gorm:"default:1" json:"show"`
+	Tags                string     `gorm:"type:varchar(500)" json:"tags"`
+	OnlineUserCount     int        `gorm:"default:0" json:"online_user_count"`
+	UploadTraffic       int64      `gorm:"default:0" json:"u"`                         // 上行流量（原版字段名 u）
+	DownloadTraffic     int64      `gorm:"default:0" json:"d"`                         // 下行流量（原版字段名 d）
+	TransferEnable      int64      `gorm:"default:0" json:"transfer_enable"`            // 流量上限，0表示不限制
+	RateTimeEnable      bool       `gorm:"default:false" json:"rate_time_enable"`
+	RateTimeRanges      string     `gorm:"type:text" json:"rate_time_ranges"`           // JSON: [{start, end, rate}]
+	CustomOutbounds     string     `gorm:"type:text" json:"custom_outbounds"`           // JSON: 自定义出站
+	CustomRoutes        string     `gorm:"type:text" json:"custom_routes"`              // JSON: 自定义路由
+	CertConfig          string     `gorm:"type:text" json:"cert_config"`                // JSON: 证书配置
+	Ports               string     `gorm:"type:varchar(255)" json:"ports"`              // 端口范围
 	HealthCheckPort     int        `gorm:"default:0" json:"health_check_port"`
 	HealthCheckInterval int        `gorm:"default:60" json:"health_check_interval"`
 	HealthCheckTimeout  int        `gorm:"default:5" json:"health_check_timeout"`
@@ -127,4 +141,66 @@ func (n *Node) ParseServerInfoConfig() *ServerInfoConfig {
 		cfg.Network = cfg.NetworkType
 	}
 	return &cfg
+}
+
+// GetGroupIDList 解析 GroupIDs 为 []uint 切片
+func (n *Node) GetGroupIDList() []uint {
+	if n.GroupIDs == "" {
+		return nil
+	}
+	var ids []uint
+	for _, s := range strings.Split(n.GroupIDs, ",") {
+		s = strings.TrimSpace(s)
+		if id, err := strconv.ParseUint(s, 10, 32); err == nil && id > 0 {
+			ids = append(ids, uint(id))
+		}
+	}
+	return ids
+}
+
+// HasGroup 检查节点是否属于指定权限组
+func (n *Node) HasGroup(groupID uint) bool {
+	for _, id := range n.GetGroupIDList() {
+		if id == groupID {
+			return true
+		}
+	}
+	return false
+}
+
+// SetGroupIDs 设置权限组ID列表
+func (n *Node) SetGroupIDs(ids []uint) {
+	if len(ids) == 0 {
+		n.GroupIDs = ""
+		return
+	}
+	strs := make([]string, len(ids))
+	for i, id := range ids {
+		strs[i] = strconv.FormatUint(uint64(id), 10)
+	}
+	n.GroupIDs = strings.Join(strs, ",")
+}
+
+// GroupIDCondition 返回 GORM 查询条件参数，用于按单个 group_id 过滤逗号分隔的 group_ids 字段
+// 返回值: condition string, args []interface{}
+func GroupIDCondition(groupID uint) (string, []interface{}) {
+	idStr := strconv.FormatUint(uint64(groupID), 10)
+	cond := "group_ids = ? OR group_ids LIKE ? OR group_ids LIKE ? OR group_ids LIKE ?"
+	args := []interface{}{idStr, idStr + ",%", "%," + idStr, "%," + idStr + ",%"}
+	return cond, args
+}
+
+// GroupIDsContainAny 返回 GORM 查询条件，检查 group_ids 是否包含任意一个指定的组ID
+func GroupIDsContainAny(groupIDs []uint) (string, []interface{}) {
+	if len(groupIDs) == 0 {
+		return "1 = 0", nil // 无组ID时返回不可能的条件
+	}
+	var conds []string
+	var args []interface{}
+	for _, gid := range groupIDs {
+		idStr := strconv.FormatUint(uint64(gid), 10)
+		conds = append(conds, "(group_ids = ? OR group_ids LIKE ? OR group_ids LIKE ? OR group_ids LIKE ?)")
+		args = append(args, idStr, idStr+",%", "%,"+idStr, "%,"+idStr+",%")
+	}
+	return "(" + strings.Join(conds, " OR ") + ")", args
 }

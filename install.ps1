@@ -10,13 +10,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# 颜色函数
 function Write-Info { Write-Host "[INFO] $args" -ForegroundColor Green }
 function Write-Warn { Write-Host "[WARN] $args" -ForegroundColor Yellow }
 function Write-Error { Write-Host "[ERROR] $args" -ForegroundColor Red }
 function Write-Step { Write-Host "[STEP] $args" -ForegroundColor Cyan }
 
-# 显示 Banner
 function Show-Banner {
     Write-Host ""
     Write-Host "  ╔═══════════════════════════════════════════════════╗" -ForegroundColor Cyan
@@ -28,7 +26,6 @@ function Show-Banner {
     Write-Host ""
 }
 
-# 生成随机字符串
 function New-RandomString {
     param([int]$Length = 32)
     $chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -39,7 +36,6 @@ function New-RandomString {
     return $result
 }
 
-# 收集配置
 function Get-Configuration {
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
@@ -47,7 +43,6 @@ function Get-Configuration {
     Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host ""
 
-    # 部署方式
     Write-Host "请选择部署方式:" -ForegroundColor Yellow
     Write-Host "  1) Docker 部署 (推荐)"
     Write-Host "  2) 二进制部署 (直接运行)"
@@ -55,14 +50,12 @@ function Get-Configuration {
     $script:DeployMethod = Read-Host "请输入选项 [1]"
     if ([string]::IsNullOrEmpty($script:DeployMethod)) { $script:DeployMethod = "1" }
 
-    # 端口配置
     $script:HttpPort = Read-Host "请输入 HTTP 端口 [$Port]"
     if ([string]::IsNullOrEmpty($script:HttpPort)) { $script:HttpPort = $Port }
 
     $script:GrpcPortValue = Read-Host "请输入 gRPC 端口 [$GrpcPort]"
     if ([string]::IsNullOrEmpty($script:GrpcPortValue)) { $script:GrpcPortValue = $GrpcPort }
 
-    # 数据库配置
     Write-Host ""
     Write-Host "请选择数据库:" -ForegroundColor Yellow
     Write-Host "  1) SQLite (推荐，无需额外配置)"
@@ -75,7 +68,6 @@ function Get-Configuration {
     switch ($script:DbType) {
         "1" {
             $script:DbDriver = "sqlite"
-            $script:DbSource = "$InstallDir\data\xboard.db"
         }
         "2" {
             $script:DbDriver = "mysql"
@@ -87,10 +79,7 @@ function Get-Configuration {
             if ([string]::IsNullOrEmpty($script:DbName)) { $script:DbName = "xboard" }
             $script:DbUser = Read-Host "MySQL 用户名 [root]"
             if ([string]::IsNullOrEmpty($script:DbUser)) { $script:DbUser = "root" }
-            $script:DbPass = Read-Host "MySQL 密码" -AsSecureString
-            $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($script:DbPass)
-            $script:DbPassPlain = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
-            $script:DbSource = "$($script:DbUser):$($script:DbPassPlain)@tcp($($script:DbHost):$($script:DbPort))/$($script:DbName)?charset=utf8mb4&parseTime=True&loc=Local"
+            $script:DbPass = Read-Host "MySQL 密码"
         }
         "3" {
             $script:DbDriver = "postgres"
@@ -102,27 +91,24 @@ function Get-Configuration {
             if ([string]::IsNullOrEmpty($script:DbName)) { $script:DbName = "xboard" }
             $script:DbUser = Read-Host "PostgreSQL 用户名 [postgres]"
             if ([string]::IsNullOrEmpty($script:DbUser)) { $script:DbUser = "postgres" }
-            $script:DbPass = Read-Host "PostgreSQL 密码" -AsSecureString
-            $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($script:DbPass)
-            $script:DbPassPlain = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
-            $script:DbSource = "host=$($script:DbHost) user=$($script:DbUser) password=$($script:DbPassPlain) dbname=$($script:DbName) port=$($script:DbPort) sslmode=disable"
+            $script:DbPass = Read-Host "PostgreSQL 密码"
         }
     }
 
-    # Redis 配置
     Write-Host ""
     $script:UseRedis = Read-Host "是否配置 Redis? (用于缓存和限流) [y/N]"
     if ([string]::IsNullOrEmpty($script:UseRedis)) { $script:UseRedis = "N" }
 
     if ($script:UseRedis -eq "y" -or $script:UseRedis -eq "Y") {
-        $script:RedisAddr = Read-Host "Redis 地址 [localhost:6379]"
-        if ([string]::IsNullOrEmpty($script:RedisAddr)) { $script:RedisAddr = "localhost:6379" }
+        $script:RedisHost = Read-Host "Redis 主机 [127.0.0.1]"
+        if ([string]::IsNullOrEmpty($script:RedisHost)) { $script:RedisHost = "127.0.0.1" }
+        $script:RedisPort = Read-Host "Redis 端口 [6379]"
+        if ([string]::IsNullOrEmpty($script:RedisPort)) { $script:RedisPort = "6379" }
         $script:RedisPass = Read-Host "Redis 密码 (无密码直接回车)"
         $script:RedisDb = Read-Host "Redis 数据库 [0]"
         if ([string]::IsNullOrEmpty($script:RedisDb)) { $script:RedisDb = "0" }
     }
 
-    # 管理员配置
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host "  管理员账户配置" -ForegroundColor Cyan
@@ -138,7 +124,6 @@ function Get-Configuration {
         Write-Info "已生成随机密码: $($script:AdminPass)"
     }
 
-    # 站点配置
     Write-Host ""
     $script:SiteName = Read-Host "站点名称 [Xboard-Go]"
     if ([string]::IsNullOrEmpty($script:SiteName)) { $script:SiteName = "Xboard-Go" }
@@ -146,12 +131,10 @@ function Get-Configuration {
     $script:SiteUrl = Read-Host "站点 URL (如 http://your-domain:$($script:HttpPort))"
     if ([string]::IsNullOrEmpty($script:SiteUrl)) { $script:SiteUrl = "http://localhost:$($script:HttpPort)" }
 
-    # 生成密钥
     $script:AppKey = New-RandomString -Length 32
     $script:NodeApiKey = New-RandomString -Length 32
 }
 
-# 生成配置文件
 function New-ConfigFile {
     Write-Step "生成配置文件..."
 
@@ -160,13 +143,61 @@ function New-ConfigFile {
         New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
     }
 
+    # 构建数据库配置段
+    $dbConfig = ""
+    switch ($script:DbDriver) {
+        "sqlite" {
+            $dbConfig = @"
+  driver: sqlite
+  dbname: $($dataDir -replace '\\','/')/xboard.db
+"@
+        }
+        "mysql" {
+            $dbConfig = @"
+  driver: mysql
+  host: $($script:DbHost)
+  port: $($script:DbPort)
+  user: $($script:DbUser)
+  password: "$($script:DbPass)"
+  dbname: $($script:DbName)
+  max_idle_conns: 10
+  max_open_conns: 100
+"@
+        }
+        "postgres" {
+            $dbConfig = @"
+  driver: postgres
+  host: $($script:DbHost)
+  port: $($script:DbPort)
+  user: $($script:DbUser)
+  password: "$($script:DbPass)"
+  dbname: $($script:DbName)
+  sslmode: disable
+  max_idle_conns: 10
+  max_open_conns: 100
+"@
+        }
+    }
+
+    # 构建 Redis 配置段
     $redisConfig = ""
     if ($script:UseRedis -eq "y" -or $script:UseRedis -eq "Y") {
         $redisConfig = @"
 redis:
-  addr: $($script:RedisAddr)
+  host: "$($script:RedisHost)"
+  port: $($script:RedisPort)
   password: "$($script:RedisPass)"
   db: $($script:RedisDb)
+  pool_size: 100
+"@
+    } else {
+        $redisConfig = @"
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 100
 "@
     }
 
@@ -180,8 +211,7 @@ server:
   mode: release
 
 database:
-  driver: $($script:DbDriver)
-  source: $($script:DbSource)
+$dbConfig
 
 $redisConfig
 
@@ -191,30 +221,37 @@ grpc:
 
 app:
   name: $($script:SiteName)
-  key: $($script:AppKey)
   node_api_key: $($script:NodeApiKey)
   default_user_role: user
-  subscribe_token_length: 32
 
-rate_limit:
-  enabled: $(if ($script:UseRedis -eq "y" -or $script:UseRedis -eq "Y") { "true" } else { "false" })
-  ip_limit: 100
-  user_limit: 200
+jwt:
+  secret: "$($script:AppKey)"
+  access_token_ttl: 7200
+  refresh_token_ttl: 604800
 
-logger:
+log:
   level: info
   format: json
+  output: stdout
+
+rate_limit:
+  enabled: true
+  ip_limit: 100
+  user_limit: 300
+  ip_whitelist:
+    - "127.0.0.1"
+    - "::1"
+  path_whitelist:
+    - "/healthz"
 "@
 
     $configContent | Out-File -FilePath "$dataDir\config.yaml" -Encoding UTF8
     Write-Info "配置文件已生成: $dataDir\config.yaml"
 }
 
-# Docker 部署
 function Install-Docker {
     Write-Step "使用 Docker 部署..."
 
-    # 检查 Docker
     try {
         $dockerVersion = docker --version
         Write-Info "Docker 已安装: $dockerVersion"
@@ -224,15 +261,12 @@ function Install-Docker {
         exit 1
     }
 
-    # 停止旧容器
     docker stop xboard-go 2>$null
     docker rm xboard-go 2>$null
 
-    # 拉取镜像
     Write-Info "拉取 Docker 镜像..."
     docker pull ghcr.io/1712872354/xboard-go:latest
 
-    # 启动容器
     Write-Info "启动容器..."
     $dataDir = "$InstallDir\data"
     docker run -d `
@@ -246,7 +280,6 @@ function Install-Docker {
     Write-Info "Docker 容器已启动"
 }
 
-# 二进制部署
 function Install-Binary {
     Write-Step "使用二进制部署..."
 
@@ -254,14 +287,12 @@ function Install-Binary {
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
     }
 
-    # 下载二进制文件
     $binaryName = "xboard-go-windows-amd64.exe"
     $downloadUrl = "https://github.com/1712872354/Xboard-Go/releases/latest/download/$binaryName"
     Write-Info "下载二进制文件: $downloadUrl"
 
     Invoke-WebRequest -Uri $downloadUrl -OutFile "$InstallDir\xboard-go.exe"
 
-    # 创建启动脚本
     $startScript = @"
 @echo off
 cd /d "$InstallDir"
@@ -270,10 +301,8 @@ pause
 "@
     $startScript | Out-File -FilePath "$InstallDir\start.bat" -Encoding ASCII
 
-    # 创建 Windows 服务
     Write-Info "创建 Windows 服务..."
 
-    # 使用 NSSM 创建服务 (如果可用)
     try {
         $nssmPath = Get-Command nssm -ErrorAction Stop
         nssm install xboard-go "$InstallDir\xboard-go.exe" "-config" "$InstallDir\data\config.yaml"
@@ -282,27 +311,22 @@ pause
     } catch {
         Write-Warn "NSSM 未安装，将使用计划任务启动"
 
-        # 创建计划任务
         $action = New-ScheduledTaskAction -Execute "$InstallDir\xboard-go.exe" -Argument "-config $InstallDir\data\config.yaml"
         $trigger = New-ScheduledTaskTrigger -AtStartup
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
         Register-ScheduledTask -TaskName "Xboard-Go" -Action $action -Trigger $trigger -Settings $settings -RunLevel Highest -Force
 
-        # 立即启动
         Start-Process -FilePath "$InstallDir\xboard-go.exe" -ArgumentList "-config $InstallDir\data\config.yaml" -WindowStyle Hidden
         Write-Info "Xboard-Go 已启动"
     }
 }
 
-# 初始化管理员
 function Initialize-Admin {
     Write-Step "初始化管理员账户..."
 
-    # 等待服务启动
     Write-Info "等待服务启动..."
     Start-Sleep -Seconds 5
 
-    # 检查服务是否启动
     $maxRetries = 30
     $retry = 0
     while ($retry -lt $maxRetries) {
@@ -311,9 +335,7 @@ function Initialize-Admin {
             if ($response.StatusCode -eq 200) {
                 break
             }
-        } catch {
-            # 忽略错误
-        }
+        } catch {}
         $retry++
         Start-Sleep -Seconds 1
     }
@@ -323,10 +345,7 @@ function Initialize-Admin {
         return
     }
 
-    Write-Info "服务已启动"
-
-    # 注册管理员账户
-    Write-Info "创建管理员账户..."
+    Write-Info "服务已启动，创建管理员账户..."
     try {
         $body = @{
             email = $script:AdminEmail
@@ -339,24 +358,47 @@ function Initialize-Admin {
         Write-Warn "管理员账户可能已存在或创建失败"
     }
 
-    # 提示设置管理员角色
-    Write-Warn "请手动将管理员角色设置为 admin:"
-    Write-Host ""
-    if ($script:DbDriver -eq "sqlite") {
-        Write-Host "  sqlite3 $($InstallDir)\data\xboard.db `"UPDATE users SET role='admin' WHERE email='$($script:AdminEmail)';`""
-    } elseif ($script:DbDriver -eq "mysql") {
-        Write-Host "  mysql -u $($script:DbUser) -p $($script:DbName) -e `"UPDATE users SET role='admin' WHERE email='$($script:AdminEmail)';`""
-    } elseif ($script:DbDriver -eq "postgres") {
-        Write-Host "  psql -U $($script:DbUser) -d $($script:DbName) -c `"UPDATE users SET role='admin' WHERE email='$($script:AdminEmail)';`""
+    # 自动设置管理员角色
+    Write-Info "设置管理员角色..."
+    Start-Sleep -Seconds 1
+
+    switch ($script:DbDriver) {
+        "sqlite" {
+            $dbPath = "$InstallDir\data\xboard.db"
+            try {
+                $sqlitePath = Get-Command sqlite3 -ErrorAction Stop
+                & sqlite3 $dbPath "UPDATE users SET role='admin' WHERE email='$($script:AdminEmail);'"
+                Write-Info "管理员角色已设置 (SQLite)"
+            } catch {
+                Write-Warn "sqlite3 未安装，请手动执行:"
+                Write-Host "  sqlite3 `"$dbPath`" `"UPDATE users SET role='admin' WHERE email='$($script:AdminEmail)';`""
+            }
+        }
+        "mysql" {
+            try {
+                & mysql -u $script:DbUser -p$script:DbPass $script:DbName -e "UPDATE users SET role='admin' WHERE email='$($script:AdminEmail)';" 2>$null
+                Write-Info "管理员角色已设置 (MySQL)"
+            } catch {
+                Write-Warn "MySQL 命令执行失败，请手动设置管理员角色"
+            }
+        }
+        "postgres" {
+            $env:PGPASSWORD = $script:DbPass
+            try {
+                & psql -U $script:DbUser -d $script:DbName -c "UPDATE users SET role='admin' WHERE email='$($script:AdminEmail)';" 2>$null
+                Write-Info "管理员角色已设置 (PostgreSQL)"
+            } catch {
+                Write-Warn "PostgreSQL 命令执行失败，请手动设置管理员角色"
+            }
+            Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+        }
     }
-    Write-Host ""
 }
 
-# 显示部署结果
 function Show-Result {
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Green
-    Write-Host "  ✅ 部署完成！" -ForegroundColor Green
+    Write-Host "  部署完成！" -ForegroundColor Green
     Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Green
     Write-Host ""
     Write-Host "  访问地址:" -ForegroundColor Cyan
@@ -390,29 +432,19 @@ function Show-Result {
     Write-Host ""
 }
 
-# 主流程
 function Main {
     Show-Banner
-
-    # 收集配置
     Get-Configuration
-
-    # 生成配置文件
     New-ConfigFile
 
-    # 部署
     if ($script:DeployMethod -eq "1") {
         Install-Docker
     } else {
         Install-Binary
     }
 
-    # 初始化管理员
     Initialize-Admin
-
-    # 显示结果
     Show-Result
 }
 
-# 运行主流程
 Main

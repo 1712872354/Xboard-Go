@@ -14,7 +14,9 @@ type Plugin struct {
 	Author      string    `gorm:"type:varchar(100)" json:"author"`                    // 作者
 	Homepage    string    `gorm:"type:varchar(255)" json:"homepage"`                  // 主页
 	Config      string    `gorm:"type:text" json:"config"`                            // 配置（JSON格式）
-	Status      int       `gorm:"default:0" json:"status"`                            // 状态：0禁用，1启用
+	Type        string     `gorm:"type:varchar(20);default:'feature'" json:"type"`    // 插件类型：feature/payment
+	IsProtected bool       `gorm:"default:false" json:"is_protected"`                 // 是否受保护（系统内置插件不可删除）
+	Status      int        `gorm:"default:0" json:"status"`                           // 状态：0禁用，1启用
 	InstalledAt *time.Time `json:"installed_at"`                                      // 安装时间
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`

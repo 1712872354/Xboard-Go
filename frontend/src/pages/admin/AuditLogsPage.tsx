@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatDate } from '@/lib/utils'
-import { Trash2 } from 'lucide-react'
+import { Trash2, X } from 'lucide-react'
 
 const useAdminAuditLogs = (page = 1, pageSize = 20, action?: string) =>
   useQuery({
@@ -67,16 +67,23 @@ export default function AuditLogsPage() {
 
       <Card>
         <CardHeader>
-          <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setPage(1) }}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {actionOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setPage(1) }}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {actionOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {actionFilter !== 'all' && (
+              <Button variant="ghost" size="sm" className="h-9 px-2" onClick={() => { setActionFilter('all'); setPage(1) }}>
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (

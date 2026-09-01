@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -17,12 +17,18 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Plus, Pencil, Trash2, Copy, Download, Gift } from 'lucide-react'
+import { Plus, Pencil, Trash2, Copy, Download, Gift, ChevronUp, ChevronDown } from 'lucide-react'
 
 const useAdminGiftTemplates = (page = 1, pageSize = 20) =>
   useQuery({
     queryKey: ['admin', 'gift-templates', page, pageSize],
     queryFn: async () => (await api.get('/admin/gift-card-templates', { params: { page, page_size: pageSize } })) as unknown as PaginatedResponse<GiftCardTemplate>,
+  })
+
+const useAdminAllTemplates = () =>
+  useQuery({
+    queryKey: ['admin', 'gift-templates-all'],
+    queryFn: async () => (await api.get('/admin/gift-card-templates', { params: { page: 1, page_size: 1000 } })) as unknown as PaginatedResponse<GiftCardTemplate>,
   })
 
 const useAdminGiftCodes = (page = 1, pageSize = 20) =>
@@ -71,6 +77,34 @@ const useDeleteGiftCode = () => {
   })
 }
 
+interface GiftCardUsage {
+  id: number
+  code: string
+  template_name: string
+  user_email: string
+  reward: string
+  used_at: string
+}
+
+interface GiftCardStatistics {
+  template_count: number
+  code_count: number
+  used_count: number
+  usage_count: number
+}
+
+const useAdminGiftUsages = (page = 1, pageSize = 20) =>
+  useQuery({
+    queryKey: ['admin', 'gift-usages', page, pageSize],
+    queryFn: async () => (await api.get('/admin/gift-card-codes/usages', { params: { page, page_size: pageSize } })) as unknown as PaginatedResponse<GiftCardUsage>,
+  })
+
+const useAdminGiftStatistics = () =>
+  useQuery({
+    queryKey: ['admin', 'gift-statistics'],
+    queryFn: async () => (await api.get('/admin/gift-card-codes/statistics')) as unknown as GiftCardStatistics,
+  })
+
 const templateSchema = z.object({
   name: z.string().min(1, '请输入名称'),
   type: z.coerce.number().min(0),
@@ -88,20 +122,55 @@ const typeMap: Record<number, string> = { 0: '余额', 1: '流量', 2: '套餐�
 export default function GiftCardsPage() {
   const [tmplPage, setTmplPage] = useState(1)
   const [codePage, setCodePage] = useState(1)
+  const [usagePage, setUsagePage] = useState(1)
   const [dialog, setDialog] = useState<'create' | 'edit' | 'generate' | null>(null)
   const [editItem, setEditItem] = useState<GiftCardTemplate | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [genCount, setGenCount] = useState(10)
   const [genTemplateId, setGenTemplateId] = useState<string>('')
   const [typeValue, setTypeValue] = useState('0')
+  const [codeTemplateFilter, setCodeTemplateFilter] = useState('all')
+  const [sortKey, setSortKey] = useState<'name' | 'type' | 'value' | 'price' | 'status'>('name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   const { data: templates, isLoading: loadingTmpl } = useAdminGiftTemplates(tmplPage)
+  const { data: allTemplates } = useAdminAllTemplates()
   const { data: codes, isLoading: loadingCodes } = useAdminGiftCodes(codePage)
+  const { data: usages, isLoading: loadingUsages } = useAdminGiftUsages(usagePage)
+  const { data: statistics, isLoading: loadingStats } = useAdminGiftStatistics()
+
+  const templateNameMap = useMemo(() => {
+    const map: Record<number, string> = {}
+    allTemplates?.list.forEach((t) => { map[t.id] = t.name })
+    return map
+  }, [allTemplates])
+
+  const sortedTemplates = useMemo(() => {
+    const list = templates?.list ?? []
+    return [...list].sort((a, b) => {
+      const av = a[sortKey], bv = b[sortKey]
+      if (typeof av === 'string' && typeof bv === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
+      const na = Number(av), nb = Number(bv)
+      return sortDir === 'asc' ? na - nb : nb - na
+    })
+  }, [templates, sortKey, sortDir])
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  const SortIcon = ({ col }: { col: typeof sortKey }) =>
+    sortKey !== col ? null : sortDir === 'asc' ? <ChevronUp className="inline h-3 w-3 ml-1" /> : <ChevronDown className="inline h-3 w-3 ml-1" />
   const createTmpl = useCreateGiftTemplate()
   const updateTmpl = useUpdateGiftTemplate()
   const deleteTmpl = useDeleteGiftTemplate()
   const generateCodes = useGenerateCodes()
   const deleteCode = useDeleteGiftCode()
+
+  const filteredCodes = codeTemplateFilter === 'all'
+    ? codes?.list ?? []
+    : (codes?.list ?? []).filter((c) => String(c.template_id) === codeTemplateFilter)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<TemplateForm>({
     resolver: zodResolver(templateSchema),
@@ -145,6 +214,7 @@ export default function GiftCardsPage() {
 
   const tmplTotalPages = templates ? Math.ceil(templates.total / templates.page_size) : 1
   const codeTotalPages = codes ? Math.ceil(codes.total / codes.page_size) : 1
+  const usageTotalPages = usages ? Math.ceil(usages.total / usages.page_size) : 1
 
   return (
     <div className="space-y-6">
@@ -156,6 +226,8 @@ export default function GiftCardsPage() {
         <TabsList>
           <TabsTrigger value="templates">模板</TabsTrigger>
           <TabsTrigger value="codes">卡密</TabsTrigger>
+          <TabsTrigger value="usages">使用记录</TabsTrigger>
+          <TabsTrigger value="statistics">统计</TabsTrigger>
         </TabsList>
 
         <TabsContent value="templates">
@@ -173,16 +245,16 @@ export default function GiftCardsPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>名称</TableHead>
-                        <TableHead>类型</TableHead>
-                        <TableHead>值</TableHead>
-                        <TableHead>价格</TableHead>
-                        <TableHead>状态</TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('name')}>名称<SortIcon col="name" /></TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('type')}>类型<SortIcon col="type" /></TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('value')}>值<SortIcon col="value" /></TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('price')}>价格<SortIcon col="price" /></TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('status')}>状态<SortIcon col="status" /></TableHead>
                         <TableHead className="text-right">操作</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {templates?.list.map((t) => (
+                      {sortedTemplates.map((t) => (
                         <TableRow key={t.id}>
                           <TableCell className="font-medium">{t.name}</TableCell>
                           <TableCell><Badge variant="outline">{typeMap[t.type] ?? '未知'}</Badge></TableCell>
@@ -220,10 +292,19 @@ export default function GiftCardsPage() {
         <TabsContent value="codes">
           <Card>
             <CardHeader>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setDialog('generate')}>
-                  <Gift className="mr-2 h-4 w-4" />生成卡密
-                </Button>
+              <div className="flex items-center gap-2">
+                <Select value={codeTemplateFilter} onValueChange={setCodeTemplateFilter}>
+                  <SelectTrigger className="w-40"><SelectValue placeholder="全部模板" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部模板</SelectItem>
+                    {allTemplates?.list.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <div className="ml-auto">
+                  <Button variant="outline" onClick={() => setDialog('generate')}>
+                    <Gift className="mr-2 h-4 w-4" />生成卡密
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -235,6 +316,7 @@ export default function GiftCardsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>卡密</TableHead>
+                        <TableHead>模板名称</TableHead>
                         <TableHead>状态</TableHead>
                         <TableHead>使用者</TableHead>
                         <TableHead>创建时间</TableHead>
@@ -242,7 +324,7 @@ export default function GiftCardsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {codes?.list.map((c) => (
+                      {filteredCodes.map((c) => (
                         <TableRow key={c.id}>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -252,6 +334,7 @@ export default function GiftCardsPage() {
                               </Button>
                             </div>
                           </TableCell>
+                          <TableCell>{templateNameMap[c.template_id] || '-'}</TableCell>
                           <TableCell>
                             <Badge variant={c.status === 1 ? 'success' : c.status === 2 ? 'destructive' : 'secondary'}>
                               {c.status === 0 ? '未使用' : c.status === 1 ? '已使用' : '已禁用'}
@@ -278,6 +361,97 @@ export default function GiftCardsPage() {
                   </div>
                 </>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="usages">
+          <Card>
+            <CardContent className="pt-6">
+              {loadingUsages ? (
+                <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
+              ) : (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ID</TableHead>
+                        <TableHead>兑换码</TableHead>
+                        <TableHead>模板名称</TableHead>
+                        <TableHead>用户邮箱</TableHead>
+                        <TableHead>获得奖励</TableHead>
+                        <TableHead>使用时间</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {usages?.list.map((u) => (
+                        <TableRow key={u.id}>
+                          <TableCell>{u.id}</TableCell>
+                          <TableCell>
+                            <span className="font-mono text-xs">{u.code}</span>
+                          </TableCell>
+                          <TableCell>{u.template_name}</TableCell>
+                          <TableCell>{u.user_email || '-'}</TableCell>
+                          <TableCell>{u.reward || '-'}</TableCell>
+                          <TableCell className="text-xs">{formatDate(u.used_at)}</TableCell>
+                        </TableRow>
+                      ))}
+                      {usages?.list.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground">暂无使用记录</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                  <div className="mt-4 flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">共 {usages?.total ?? 0} 条</p>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" disabled={usagePage <= 1} onClick={() => setUsagePage(usagePage - 1)}>上一页</Button>
+                      <span className="flex items-center text-sm">{usagePage} / {usageTotalPages}</span>
+                      <Button size="sm" variant="outline" disabled={usagePage >= usageTotalPages} onClick={() => setUsagePage(usagePage + 1)}>下一页</Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="statistics">
+          <Card>
+            <CardContent className="pt-6">
+              {loadingStats ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
+                </div>
+              ) : statistics ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Card>
+                    <CardContent className="pt-6">
+                      <p className="text-sm text-muted-foreground">模板总数</p>
+                      <p className="text-3xl font-bold mt-1">{statistics.template_count}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <p className="text-sm text-muted-foreground">兑换码总数</p>
+                      <p className="text-3xl font-bold mt-1">{statistics.code_count}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <p className="text-sm text-muted-foreground">已使用数量</p>
+                      <p className="text-3xl font-bold mt-1">{statistics.used_count}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <p className="text-sm text-muted-foreground">使用记录数</p>
+                      <p className="text-3xl font-bold mt-1">{statistics.usage_count}</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>

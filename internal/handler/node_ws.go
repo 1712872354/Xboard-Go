@@ -11,6 +11,8 @@ import (
 
 	"xboard-go/config"
 	"xboard-go/internal/grpc"
+	"xboard-go/internal/model"
+	"xboard-go/pkg/database"
 	"xboard-go/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -53,9 +55,31 @@ func (h *NodeWSHandler) Handle(c *gin.Context) {
 	nodeIDStr := c.Query("node_id")
 	machineIDStr := c.Query("machine_id")
 
-	if token == "" || token != expectedKey {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
 		return
+	}
+
+	if machineIDStr != "" {
+		machineID64, err := strconv.ParseUint(machineIDStr, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid machine_id"})
+			return
+		}
+		var machine model.ServerMachine
+		if err := database.Get().Where("id = ?", machineID64).First(&machine).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid machine_id"})
+			return
+		}
+		if token != machine.Token {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			return
+		}
+	} else {
+		if token != expectedKey {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			return
+		}
 	}
 
 	// 支持 node_id 或 machine_id

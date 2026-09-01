@@ -8,6 +8,7 @@ import (
 
 	"xboard-go/internal/middleware"
 	"xboard-go/internal/model"
+	"xboard-go/internal/repository"
 	"xboard-go/internal/service"
 	"xboard-go/pkg/response"
 
@@ -316,6 +317,10 @@ func (h *UserHandler) ResetSubscribeToken(c *gin.Context) {
 // @Param page query int false "页码" default(1)
 // @Param page_size query int false "每页数量" default(20)
 // @Param keyword query string false "搜索关键词（邮箱）"
+// @Param status query int false "状态筛选 (0/1)"
+// @Param role query string false "角色筛选 (user/admin)"
+// @Param plan_id query int false "套餐筛选"
+// @Param expired query bool false "是否过期 (true=已过期, false=未过期)"
 // @Success 200 {object} response.Response
 // @Router /api/v1/admin/users [get]
 func (h *UserHandler) ListUsers(c *gin.Context) {
@@ -330,7 +335,30 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		pageSize = 20
 	}
 
-	users, total, err := h.userService.ListUsers(page, pageSize, keyword)
+	filter := repository.UserFilter{
+		Keyword: keyword,
+	}
+	if statusStr := c.Query("status"); statusStr != "" {
+		if status, err := strconv.Atoi(statusStr); err == nil {
+			filter.Status = &status
+		}
+	}
+	if role := c.Query("role"); role != "" {
+		filter.Role = role
+	}
+	if planIDStr := c.Query("plan_id"); planIDStr != "" {
+		if planID, err := strconv.ParseUint(planIDStr, 10, 64); err == nil {
+			pid := uint(planID)
+			filter.PlanID = &pid
+		}
+	}
+	if expiredStr := c.Query("expired"); expiredStr != "" {
+		if expired, err := strconv.ParseBool(expiredStr); err == nil {
+			filter.ExpiredAt = &expired
+		}
+	}
+
+	users, total, err := h.userService.ListUsers(page, pageSize, filter)
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return

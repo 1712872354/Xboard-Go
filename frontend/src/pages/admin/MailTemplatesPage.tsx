@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
@@ -18,7 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatDate } from '@/lib/utils'
-import { Plus, Pencil, Trash2, Copy } from 'lucide-react'
+import { Plus, Pencil, Trash2, Copy, Loader2 } from 'lucide-react'
 
 const useAdminMailTemplates = (page = 1, pageSize = 20) =>
   useQuery({
@@ -50,6 +50,21 @@ const useDeleteMailTemplate = () => {
   })
 }
 
+const useResetMailTemplate = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => await api.put(`/admin/mail-templates/${id}/reset`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'mail-templates'] }); toast.success('已恢复默认模板') },
+  })
+}
+
+const useSendTestMail = () => {
+  return useMutation({
+    mutationFn: async ({ id, email }: { id: number; email?: string }) => await api.post(`/admin/mail-templates/${id}/test`, { email }),
+    onSuccess: () => { toast.success('测试邮件已发送') },
+  })
+}
+
 const templateSchema = z.object({
   name: z.string().min(1, '请输入名称'),
   subject: z.string().min(1, '请输入主题'),
@@ -68,16 +83,35 @@ export default function MailTemplatesPage() {
   const [dialog, setDialog] = useState<'create' | 'edit' | null>(null)
   const [editItem, setEditItem] = useState<MailTemplate | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [resetId, setResetId] = useState<number | null>(null)
+  const [testEmailDialog, setTestEmailDialog] = useState(false)
+  const [testEmail, setTestEmail] = useState('')
   const [langValue, setLangValue] = useState('zh-CN')
+  const previewRef = useRef<HTMLIFrameElement>(null)
 
   const { data, isLoading } = useAdminMailTemplates(page)
   const createTmpl = useCreateMailTemplate()
   const updateTmpl = useUpdateMailTemplate()
   const deleteTmpl = useDeleteMailTemplate()
+  const resetTmpl = useResetMailTemplate()
+  const sendTestMail = useSendTestMail()
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<TemplateForm>({
+  const { register, handleSubmit, reset, control, formState: { errors } } = useForm<TemplateForm>({
     resolver: zodResolver(templateSchema),
   })
+
+  const bodyValue = useWatch({ control, name: 'body' })
+
+  useEffect(() => {
+    if (previewRef.current) {
+      const doc = previewRef.current.contentDocument
+      if (doc) {
+        doc.open()
+        doc.write(bodyValue || '')
+        doc.close()
+      }
+    }
+  }, [bodyValue])
 
   const openCreate = () => {
     reset({ name: '', subject: '', body: '', language: 'zh-CN', remark: '' })
@@ -105,9 +139,21 @@ export default function MailTemplatesPage() {
     if (deleteId !== null) deleteTmpl.mutate(deleteId, { onSuccess: () => setDeleteId(null) })
   }
 
+  const handleReset = () => {
+    if (resetId !== null) resetTmpl.mutate(resetId, { onSuccess: () => { setResetId(null); setDialog(null); setEditItem(null) } })
+  }
+
   const copyVar = (v: string) => {
     navigator.clipboard.writeText(v)
     toast.success(`已复制 ${v}`)
+  }
+
+  const handleSendTest = () => {
+    if (!editItem) return
+    sendTestMail.mutate(
+      { id: editItem.id, email: testEmail || undefined },
+      { onSuccess: () => { setTestEmailDialog(false); setTestEmail('') } }
+    )
   }
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 1
@@ -171,7 +217,7 @@ export default function MailTemplatesPage() {
       </Card>
 
       <Dialog open={dialog !== null} onOpenChange={() => { setDialog(null); setEditItem(null) }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>{dialog === 'create' ? '新建模板' : '编辑模板'}</DialogTitle>
           </DialogHeader>
@@ -212,16 +258,42 @@ export default function MailTemplatesPage() {
             </div>
             <div className="space-y-2">
               <Label>内容 (HTML)</Label>
-              <Textarea {...register('body')} rows={10} className="font-mono text-xs" />
+              <div className="grid grid-cols-2 gap-4">
+                <Textarea {...register('body')} rows={14} className="font-mono text-xs" />
+                <div className="rounded-md border bg-white">
+                  <div className="border-b px-3 py-1.5 text-xs font-medium text-muted-foreground">实时预览</div>
+                  <iframe
+                    ref={previewRef}
+                    sandbox=""
+                    className="h-[340px] w-full"
+                    title="邮件预览"
+                  />
+                </div>
+              </div>
               {errors.body && <p className="text-xs text-destructive">{errors.body.message}</p>}
             </div>
             <div className="space-y-2">
               <Label>备注</Label>
               <Input {...register('remark')} />
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialog(null)}>取消</Button>
-              <Button type="submit">保存</Button>
+            <DialogFooter className="flex-row justify-between">
+              {dialog === 'edit' && editItem && (
+                <div className="flex gap-2">
+                  <Button type="button" variant="destructive" size="sm" onClick={() => setResetId(editItem.id)}>
+                    恢复默认
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setTestEmailDialog(true)}>
+                    发送测试
+                  </Button>
+                </div>
+              )}
+              <div className="flex gap-2 ml-auto">
+                <Button type="button" variant="outline" onClick={() => setDialog(null)}>取消</Button>
+                <Button type="submit" disabled={createTmpl.isPending || updateTmpl.isPending}>
+                  {(createTmpl.isPending || updateTmpl.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  保存
+                </Button>
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -236,6 +308,41 @@ export default function MailTemplatesPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteId(null)}>取消</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleteTmpl.isPending}>确认删除</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resetId !== null} onOpenChange={() => setResetId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>恢复默认模板</DialogTitle>
+            <DialogDescription>确定要将该模板恢复为系统默认内容吗？当前修改将被覆盖。</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetId(null)}>取消</Button>
+            <Button variant="destructive" onClick={handleReset} disabled={resetTmpl.isPending}>确认恢复</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={testEmailDialog} onOpenChange={() => { setTestEmailDialog(false); setTestEmail('') }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>发送测试邮件</DialogTitle>
+            <DialogDescription>输入测试邮箱地址，留空将发送到管理员邮箱。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>邮箱地址</Label>
+            <Input
+              type="email"
+              placeholder="留空则发送到管理员邮箱"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setTestEmailDialog(false); setTestEmail('') }}>取消</Button>
+            <Button onClick={handleSendTest} disabled={sendTestMail.isPending}>发送</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

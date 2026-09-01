@@ -66,3 +66,33 @@ export const useComprehensiveStats = () =>
     queryKey: ['admin', 'dashboard', 'comprehensive-stats'],
     queryFn: async () => (await api.get('/admin/dashboard/comprehensive-stats')) as unknown as ComprehensiveStats,
   })
+
+export interface NodeTrafficRankingItem {
+  node_id: number
+  node_name: string
+  upload: number
+  download: number
+  total: number
+}
+
+export const useNodeTrafficRanking = (days = 7) =>
+  useQuery({
+    queryKey: ['admin', 'dashboard', 'node-traffic-ranking', days],
+    queryFn: async () =>
+      (await api.get('/admin/dashboard/node-traffic-ranking', { params: { days } })) as unknown as NodeTrafficRankingItem[],
+  })
+
+export interface UserTrafficRankingItem {
+  user_id: number
+  user_email: string
+  upload: number
+  download: number
+  total: number
+}
+
+export const useUserTrafficRanking = (days = 7) =>
+  useQuery({
+    queryKey: ['admin', 'dashboard', 'user-traffic-ranking', days],
+    queryFn: async () =>
+      (await api.get('/admin/dashboard/user-traffic-ranking', { params: { days } })) as unknown as UserTrafficRankingItem[],
+  })

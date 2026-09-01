@@ -54,7 +54,7 @@ type NodeConfig struct {
 	Port       int32             `json:"port"`
 	ServerInfo string            `json:"server_info"`
 	Rate       float32           `json:"rate"`
-	GroupID    uint32            `json:"group_id"`
+	GroupIDs   []uint32          `json:"group_ids"`
 	ParentID   uint32            `json:"parent_id"`
 	Status     int32             `json:"status"`
 	Tags       map[string]string `json:"tags,omitempty"`

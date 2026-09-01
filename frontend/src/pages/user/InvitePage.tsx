@@ -25,7 +25,7 @@ export default function InvitePage() {
 
   const { data: inviteCode, isLoading: codeLoading } = useQuery({
     queryKey: ['user', 'invite', 'code'],
-    queryFn: async () => (await api.get('/user/invite/code')) as unknown as InviteCode,
+    queryFn: async () => (await api.get('/invite/code')) as unknown as InviteCode,
   })
 
   const { data: commissionStats } = useQuery({

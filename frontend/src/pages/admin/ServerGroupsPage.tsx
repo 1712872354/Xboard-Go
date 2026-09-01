@@ -1,197 +1,203 @@
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, useMemo } from 'react'
 import { toast } from 'sonner'
-import api from '@/lib/api'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
+import { useServerGroups, useCreateServerGroup, useUpdateServerGroup, useDeleteServerGroup } from '@/hooks/useServerGroups'
+import type { ServerGroup } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger,
+} from '@/components/ui/dialog'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Users, Server, Search, AlertTriangle } from 'lucide-react'
 
-interface ServerGroup {
-  id: number
-  name: string
-  description: string
-  status: number
-  created_at: string
-}
+const NAME_REGEX = /^[a-zA-Z0-9\u4e00-\u9fa5_-]+$/
 
-function GroupForm({ group, onClose, onSave }: { group?: ServerGroup; onClose: () => void; onSave: (data: Partial<ServerGroup>) => void }) {
-  const [name, setName] = useState(group?.name ?? '')
-  const [description, setDescription] = useState(group?.description ?? '')
-  const [status, setStatus] = useState(group?.status ?? 1)
-  const [saving, setSaving] = useState(false)
+function GroupFormDialog({ group, onSave, children }: {
+  group?: ServerGroup
+  onSave: (data: Partial<ServerGroup>) => void
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState(group?.name || '')
+  const [error, setError] = useState('')
 
-  const handleSubmit = async () => {
+  const handleSave = () => {
     if (!name.trim()) {
-      toast.error('请输入分组名称')
+      setError('请输入权限组名称')
       return
     }
-    setSaving(true)
-    await onSave({ name, description, status })
-    setSaving(false)
+    if (name.length > 40) {
+      setError('名称不能超过40个字符')
+      return
+    }
+    if (!NAME_REGEX.test(name)) {
+      setError('名称只能包含字母、数字、中文、下划线和连字符')
+      return
+    }
+    setError('')
+    onSave({ name: name.trim() })
+    setOpen(false)
+    setName('')
   }
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label>分组名称</Label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入分组名称" />
-      </div>
-      <div className="space-y-2">
-        <Label>描述</Label>
-        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="请输入描述" />
-      </div>
-      <div className="flex items-center justify-between">
-        <Label>启用状态</Label>
-        <Switch checked={status === 1} onCheckedChange={(v) => setStatus(v ? 1 : 0)} />
-      </div>
-      <DialogFooter>
-        <Button variant="outline" onClick={onClose}>取消</Button>
-        <Button onClick={handleSubmit} disabled={saving}>
-          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {group ? '更新' : '创建'}
-        </Button>
-      </DialogFooter>
-    </div>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setName(group?.name || ''); setError('') } }}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{group ? '编辑权限组' : '创建权限组'}</DialogTitle>
+          <DialogDescription>权限组用于控制用户对节点的访问权限</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>权限组名称</Label>
+            <Input
+              value={name}
+              onChange={(e) => { setName(e.target.value); setError('') }}
+              placeholder="输入权限组名称"
+              maxLength={40}
+            />
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <p className="text-xs text-muted-foreground">支持字母、数字、中文、下划线和连字符，最多40个字符</p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
+          <Button onClick={handleSave}>保存</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 export default function ServerGroupsPage() {
-  const qc = useQueryClient()
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingGroup, setEditingGroup] = useState<ServerGroup | undefined>()
+  const { data, isLoading } = useServerGroups()
+  const createGroup = useCreateServerGroup()
+  const updateGroup = useUpdateServerGroup()
+  const deleteGroup = useDeleteServerGroup()
+  const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [search, setSearch] = useState('')
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'server-groups'],
-    queryFn: async () => await api.get('/admin/server-groups') as unknown as { list: ServerGroup[]; total: number },
-  })
+  const groups = data?.list || []
 
-  const createMutation = useMutation({
-    mutationFn: async (data: Partial<ServerGroup>) => await api.post('/admin/server-groups', data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'server-groups'] })
-      setDialogOpen(false)
-      toast.success('创建成功')
-    },
-    onError: () => toast.error('创建失败'),
-  })
+  const filteredGroups = useMemo(() => {
+    if (!search.trim()) return groups
+    const q = search.toLowerCase()
+    return groups.filter((g) => g.name.toLowerCase().includes(q))
+  }, [groups, search])
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, ...data }: Partial<ServerGroup> & { id: number }) =>
-      await api.put(`/admin/server-groups/${id}`, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'server-groups'] })
-      setDialogOpen(false)
-      toast.success('更新成功')
-    },
-    onError: () => toast.error('更新失败'),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => await api.delete(`/admin/server-groups/${id}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'server-groups'] })
-      toast.success('删除成功')
-    },
-    onError: () => toast.error('删除失败'),
-  })
-
-  const handleSave = async (formData: Partial<ServerGroup>) => {
-    if (editingGroup) {
-      await updateMutation.mutateAsync({ id: editingGroup.id, ...formData })
-    } else {
-      await createMutation.mutateAsync(formData)
-    }
-  }
-
-  const handleEdit = (group: ServerGroup) => {
-    setEditingGroup(group)
-    setDialogOpen(true)
-  }
-
-  const handleAdd = () => {
-    setEditingGroup(undefined)
-    setDialogOpen(true)
-  }
+  const deleteTarget = deleteId !== null ? groups.find((g) => g.id === deleteId) : null
+  const canDelete = deleteTarget ? (deleteTarget.users_count ?? 0) === 0 && (deleteTarget.server_count ?? 0) === 0 : false
+  const deleteBlockedReason = deleteTarget
+    ? (deleteTarget.server_count ?? 0) > 0 ? `该权限组正在被 ${deleteTarget.server_count} 个节点使用`
+      : (deleteTarget.users_count ?? 0) > 0 ? `该权限组正在被 ${deleteTarget.users_count} 个用户使用`
+      : ''
+    : ''
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">权限组管理</h1>
-          <p className="text-muted-foreground">管理服务器权限分组</p>
+          <h1 className="text-2xl font-bold tracking-tight">权限组管理</h1>
+          <p className="text-muted-foreground">管理所有权限组，控制用户对节点的访问权限</p>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus className="mr-2 h-4 w-4" />
-          添加分组
-        </Button>
+        <GroupFormDialog onSave={(data) => createGroup.mutate(data, { onSuccess: () => toast.success('创建成功') })}>
+          <Button><Plus className="mr-2 h-4 w-4" />添加权限组</Button>
+        </GroupFormDialog>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>分组列表</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>名称</TableHead>
-                  <TableHead>描述</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead>操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data?.list?.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground">暂无数据</TableCell></TableRow>
-                ) : data?.list?.map((g) => (
-                  <TableRow key={g.id}>
-                    <TableCell className="font-mono text-xs">{g.id}</TableCell>
-                    <TableCell className="font-medium">{g.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{g.description || '-'}</TableCell>
-                    <TableCell>
-                      <Badge variant={g.status === 1 ? 'success' : 'secondary'}>
-                        {g.status === 1 ? '启用' : '禁用'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{g.created_at?.slice(0, 16)}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => handleEdit(g)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => { if (confirm('确定删除？')) deleteMutation.mutate(g.id) }}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* 搜索 */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input placeholder="搜索权限组名称..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+      </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingGroup ? '编辑分组' : '添加分组'}</DialogTitle>
-          </DialogHeader>
-          <GroupForm group={editingGroup} onClose={() => setDialogOpen(false)} onSave={handleSave} />
-        </DialogContent>
-      </Dialog>
+      {isLoading ? (
+        <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+      ) : filteredGroups.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+          <Server className="mb-3 h-10 w-10" />
+          <p className="text-sm">{search ? '没有匹配的权限组' : '暂无权限组'}</p>
+        </div>
+      ) : (
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-16">ID</TableHead>
+                <TableHead>名称</TableHead>
+                <TableHead className="w-24 text-center">用户数</TableHead>
+                <TableHead className="w-24 text-center">节点数</TableHead>
+                <TableHead className="w-24 text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredGroups.map((g) => (
+                <TableRow key={g.id}>
+                  <TableCell className="font-mono text-muted-foreground">{g.id}</TableCell>
+                  <TableCell className="font-medium max-w-[300px] truncate">{g.name}</TableCell>
+                  <TableCell className="text-center">
+                    <span className="inline-flex items-center gap-1 text-sm">
+                      <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                      {g.users_count ?? 0}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <span className="inline-flex items-center gap-1 text-sm">
+                      <Server className="h-3.5 w-3.5 text-muted-foreground" />
+                      {g.server_count ?? 0}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <GroupFormDialog group={g} onSave={(data) => updateGroup.mutate({ id: g.id, ...data }, { onSuccess: () => toast.success('更新成功') })}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </GroupFormDialog>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteId(g.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              {canDelete
+                ? `此操作将永久删除权限组"${deleteTarget?.name}"，删除后无法恢复。确定要继续吗？`
+                : (
+                  <span className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                    <span>{deleteBlockedReason}，无法删除。请先解除关联后再试。</span>
+                  </span>
+                )
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{canDelete ? '取消' : '关闭'}</AlertDialogCancel>
+            {canDelete && (
+              <AlertDialogAction onClick={() => { if (deleteId !== null) deleteGroup.mutate(deleteId, { onSuccess: () => { toast.success('删除成功'); setDeleteId(null) } }) }}>删除</AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

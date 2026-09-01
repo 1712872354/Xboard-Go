@@ -22,12 +22,12 @@ func NewServerRouteHandler(serverRouteService service.ServerRouteService) *Serve
 
 // CreateServerRouteRequest 创建服务器路由请求
 type CreateServerRouteRequest struct {
-	GroupID uint   `json:"group_id" binding:"required"`
-	Name    string `json:"name" binding:"required"`
-	Match   string `json:"match" binding:"required"`
-	Action  string `json:"action" binding:"required"`
-	Target  string `json:"target"`
-	Sort    int    `json:"sort"`
+	GroupID     uint   `json:"group_id" binding:"required"`
+	Name        string `json:"name" binding:"required"`
+	Match       string `json:"match" binding:"required"`
+	Action      string `json:"action" binding:"required"`
+	ActionValue string `json:"action_value"`
+	Sort        int    `json:"sort"`
 }
 
 // CreateServerRoute 创建服务器路由（管理员）
@@ -38,7 +38,7 @@ func (h *ServerRouteHandler) CreateServerRoute(c *gin.Context) {
 		return
 	}
 
-	route, err := h.serverRouteService.Create(req.GroupID, req.Name, req.Match, req.Action, req.Target, req.Sort)
+	route, err := h.serverRouteService.Create(req.GroupID, req.Name, req.Match, req.Action, req.ActionValue, req.Sort)
 	if err != nil {
 		response.InternalError(c, "创建服务器路由失败："+err.Error())
 		return
@@ -67,13 +67,13 @@ func (h *ServerRouteHandler) GetServerRoute(c *gin.Context) {
 
 // UpdateServerRouteRequest 更新服务器路由请求
 type UpdateServerRouteRequest struct {
-	GroupID uint   `json:"group_id" binding:"required"`
-	Name    string `json:"name" binding:"required"`
-	Match   string `json:"match" binding:"required"`
-	Action  string `json:"action" binding:"required"`
-	Target  string `json:"target"`
-	Sort    int    `json:"sort"`
-	Status  int    `json:"status"`
+	GroupID     uint   `json:"group_id" binding:"required"`
+	Name        string `json:"name" binding:"required"`
+	Match       string `json:"match" binding:"required"`
+	Action      string `json:"action" binding:"required"`
+	ActionValue string `json:"action_value"`
+	Sort        int    `json:"sort"`
+	Status      int    `json:"status"`
 }
 
 // UpdateServerRoute 更新服务器路由（管理员）
@@ -91,7 +91,7 @@ func (h *ServerRouteHandler) UpdateServerRoute(c *gin.Context) {
 		return
 	}
 
-	route, err := h.serverRouteService.Update(uint(id), req.GroupID, req.Name, req.Match, req.Action, req.Target, req.Sort, req.Status)
+	route, err := h.serverRouteService.Update(uint(id), req.GroupID, req.Name, req.Match, req.Action, req.ActionValue, req.Sort, req.Status)
 	if err != nil {
 		response.InternalError(c, "更新服务器路由失败："+err.Error())
 		return

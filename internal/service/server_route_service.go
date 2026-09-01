@@ -9,9 +9,9 @@ import (
 
 // ServerRouteService 服务器路由服务接口
 type ServerRouteService interface {
-	Create(groupID uint, name, match, action, target string, sort int) (*model.ServerRoute, error)
+	Create(groupID uint, name, match, action, actionValue string, sort int) (*model.ServerRoute, error)
 	GetByID(id uint) (*model.ServerRoute, error)
-	Update(id uint, groupID uint, name, match, action, target string, sort, status int) (*model.ServerRoute, error)
+	Update(id uint, groupID uint, name, match, action, actionValue string, sort, status int) (*model.ServerRoute, error)
 	Delete(id uint) error
 	List(page, pageSize int, groupID uint) ([]model.ServerRoute, int64, error)
 	ListByGroup(groupID uint) ([]model.ServerRoute, error)
@@ -29,15 +29,15 @@ func NewServerRouteService(serverRouteRepo repository.ServerRouteRepository) Ser
 }
 
 // Create 创建服务器路由
-func (s *serverRouteService) Create(groupID uint, name, match, action, target string, sort int) (*model.ServerRoute, error) {
+func (s *serverRouteService) Create(groupID uint, name, match, action, actionValue string, sort int) (*model.ServerRoute, error) {
 	route := &model.ServerRoute{
-		GroupID: groupID,
-		Name:    name,
-		Match:   match,
-		Action:  action,
-		Target:  target,
-		Sort:    sort,
-		Status:  1,
+		GroupID:     groupID,
+		Name:        name,
+		Match:       match,
+		Action:      action,
+		ActionValue: actionValue,
+		Sort:        sort,
+		Status:      1,
 	}
 
 	if err := s.serverRouteRepo.Create(route); err != nil {
@@ -60,7 +60,7 @@ func (s *serverRouteService) GetByID(id uint) (*model.ServerRoute, error) {
 }
 
 // Update 更新服务器路由
-func (s *serverRouteService) Update(id uint, groupID uint, name, match, action, target string, sort, status int) (*model.ServerRoute, error) {
+func (s *serverRouteService) Update(id uint, groupID uint, name, match, action, actionValue string, sort, status int) (*model.ServerRoute, error) {
 	route, err := s.serverRouteRepo.GetByID(id)
 	if err != nil {
 		return nil, err
@@ -73,7 +73,7 @@ func (s *serverRouteService) Update(id uint, groupID uint, name, match, action, 
 	route.Name = name
 	route.Match = match
 	route.Action = action
-	route.Target = target
+	route.ActionValue = actionValue
 	route.Sort = sort
 	route.Status = status
 

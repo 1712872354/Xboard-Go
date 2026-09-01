@@ -6,7 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"xboard-go/internal/middleware"
+	"xboard-go/internal/model"
 	"xboard-go/internal/service"
+	"xboard-go/pkg/database"
 	"xboard-go/pkg/response"
 )
 
@@ -174,4 +176,101 @@ func (h *TrafficHandler) AdminGetUserTraffic(c *gin.Context) {
 	}
 
 	response.Success(c, stats)
+}
+
+// TrafficResetLogWithUser 带用户邮箱的流量重置日志
+type TrafficResetLogWithUser struct {
+	model.TrafficResetLog
+	UserEmail string `json:"user_email"`
+}
+
+// ListTrafficLogs 流量重置日志列表（管理员）
+func (h *TrafficHandler) ListTrafficLogs(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+
+	db := database.Get()
+	query := db.Model(&model.TrafficResetLog{})
+
+	// 用户邮箱筛选
+	if userEmail := c.Query("user_email"); userEmail != "" {
+		var userIDs []uint
+		db.Model(&model.User{}).Where("email LIKE ?", "%"+userEmail+"%").Pluck("id", &userIDs)
+		if len(userIDs) > 0 {
+			query = query.Where("user_id IN ?", userIDs)
+		} else {
+			response.Success(c, gin.H{"list": []TrafficResetLogWithUser{}, "total": 0})
+			return
+		}
+	}
+
+	// 重置类型筛选
+	if resetType := c.Query("reset_type"); resetType != "" {
+		query = query.Where("reset_type = ?", resetType)
+	}
+
+	// 触发来源筛选
+	if triggerSource := c.Query("trigger_source"); triggerSource != "" {
+		query = query.Where("trigger_source = ?", triggerSource)
+	}
+
+	// 时间范围筛选
+	if startDate := c.Query("start_date"); startDate != "" {
+		query = query.Where("reset_time >= ?", startDate)
+	}
+	if endDate := c.Query("end_date"); endDate != "" {
+		query = query.Where("reset_time <= ?", endDate+" 23:59:59")
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		response.InternalError(c, "查询日志失败")
+		return
+	}
+
+	var logs []model.TrafficResetLog
+	offset := (page - 1) * perPage
+	if err := query.Order("id DESC").Offset(offset).Limit(perPage).Find(&logs).Error; err != nil {
+		response.InternalError(c, "查询日志失败")
+		return
+	}
+
+	// 批量查询用户邮箱
+	userIDSet := make(map[uint]bool)
+	for _, log := range logs {
+		userIDSet[log.UserID] = true
+	}
+	userIDs := make([]uint, 0, len(userIDSet))
+	for id := range userIDSet {
+		userIDs = append(userIDs, id)
+	}
+
+	userEmailMap := make(map[uint]string)
+	if len(userIDs) > 0 {
+		var users []model.User
+		db.Where("id IN ?", userIDs).Find(&users)
+		for _, u := range users {
+			userEmailMap[u.ID] = u.Email
+		}
+	}
+
+	// 组装结果
+	result := make([]TrafficResetLogWithUser, len(logs))
+	for i, log := range logs {
+		result[i] = TrafficResetLogWithUser{
+			TrafficResetLog: log,
+			UserEmail:       userEmailMap[log.UserID],
+		}
+	}
+
+	response.Success(c, gin.H{
+		"list":  result,
+		"total": total,
+	})
 }

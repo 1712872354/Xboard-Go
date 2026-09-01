@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -6,9 +6,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatDate } from '@/lib/utils'
-import { RefreshCw, Download } from 'lucide-react'
+import { RefreshCw, Download, X, BarChart3, Users, Clock } from 'lucide-react'
 
 interface TrafficResetLog {
   id: number
@@ -32,11 +33,27 @@ const resetTypeMap: Record<string, string> = {
   manual: '手动重置',
 }
 
+const resetTypeOptions = [
+  { value: 'all', label: '全部类型' },
+  { value: 'monthly_first', label: '每月1号' },
+  { value: 'monthly', label: '按月重置' },
+  { value: 'yearly_first', label: '每年1月1号' },
+  { value: 'yearly', label: '按年重置' },
+  { value: 'manual', label: '手动重置' },
+]
+
 const sourceMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'success' | 'destructive' }> = {
   auto: { label: '自动', variant: 'default' },
   manual: { label: '手动', variant: 'secondary' },
   cron: { label: '定时', variant: 'success' },
 }
+
+const triggerSourceOptions = [
+  { value: 'all', label: '全部来源' },
+  { value: 'auto', label: '自动触发' },
+  { value: 'manual', label: '手动触发' },
+  { value: 'cron', label: '定时任务' },
+]
 
 function formatTraffic(bytes: number): string {
   if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(2)} GB`
@@ -47,13 +64,40 @@ function formatTraffic(bytes: number): string {
 
 export default function TrafficResetLogsPage() {
   const [userEmail, setUserEmail] = useState('')
+  const [resetType, setResetType] = useState('all')
+  const [triggerSource, setTriggerSource] = useState('all')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [page, setPage] = useState(1)
 
+  const hasFilters = userEmail || resetType !== 'all' || triggerSource !== 'all' || startDate || endDate
+
+  const stats = useMemo(() => {
+    const list = data?.list ?? []
+    if (list.length === 0) return null
+    const uniqueUsers = new Set(list.map((l) => l.user_id)).size
+    const latestTime = list.reduce((max, l) => l.reset_time > max ? l.reset_time : max, list[0].reset_time)
+    return { total: data?.total ?? 0, uniqueUsers, latestTime }
+  }, [data])
+
+  const resetFilters = () => {
+    setUserEmail('')
+    setResetType('all')
+    setTriggerSource('all')
+    setStartDate('')
+    setEndDate('')
+    setPage(1)
+  }
+
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['admin', 'traffic-reset-logs', page, userEmail],
+    queryKey: ['admin', 'traffic-reset-logs', page, userEmail, resetType, triggerSource, startDate, endDate],
     queryFn: async () => {
       const params: Record<string, string> = { page: page.toString(), per_page: '20' }
       if (userEmail) params.user_email = userEmail
+      if (resetType !== 'all') params.reset_type = resetType
+      if (triggerSource !== 'all') params.trigger_source = triggerSource
+      if (startDate) params.start_date = startDate
+      if (endDate) params.end_date = endDate
       return await api.get('/admin/traffic/logs', { params }) as unknown as { list: TrafficResetLog[]; total: number }
     },
   })
@@ -65,22 +109,107 @@ export default function TrafficResetLogsPage() {
           <h1 className="text-2xl font-bold">流量重置日志</h1>
           <p className="text-muted-foreground">查看用户流量重置历史记录</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          刷新
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => {}}>
+            <Download className="mr-2 h-4 w-4" />
+            导出
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            刷新
+          </Button>
+        </div>
       </div>
 
+      {stats && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">总重置次数</p>
+                  <p className="text-2xl font-bold mt-1">{stats.total}</p>
+                </div>
+                <BarChart3 className="h-8 w-8 text-muted-foreground" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">涉及用户数</p>
+                  <p className="text-2xl font-bold mt-1">{stats.uniqueUsers}</p>
+                </div>
+                <Users className="h-8 w-8 text-muted-foreground" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">最近重置</p>
+                  <p className="text-sm font-medium mt-1">{formatDate(stats.latestTime)}</p>
+                </div>
+                <Clock className="h-8 w-8 text-muted-foreground" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>日志列表</CardTitle>
-          <div className="flex gap-2">
+        <CardHeader className="space-y-4">
+          <div className="flex items-center justify-between">
+            <CardTitle>日志列表</CardTitle>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
             <Input
               placeholder="搜索用户邮箱..."
               value={userEmail}
               onChange={(e) => { setUserEmail(e.target.value); setPage(1) }}
               className="w-48"
             />
+            <Select value={resetType} onValueChange={(v) => { setResetType(v); setPage(1) }}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {resetTypeOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={triggerSource} onValueChange={(v) => { setTriggerSource(v); setPage(1) }}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {triggerSourceOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => { setStartDate(e.target.value); setPage(1) }}
+              className="w-40"
+            />
+            <span className="text-sm text-muted-foreground">至</span>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(e) => { setEndDate(e.target.value); setPage(1) }}
+              className="w-40"
+            />
+            {hasFilters && (
+              <Button variant="ghost" size="sm" onClick={resetFilters}>
+                <X className="mr-1 h-3.5 w-3.5" />
+                重置
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>

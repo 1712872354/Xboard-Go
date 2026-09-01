@@ -29,6 +29,7 @@ type CreatePluginRequest struct {
 	Author      string `json:"author"`
 	Homepage    string `json:"homepage"`
 	Config      string `json:"config"`
+	Type        string `json:"type"`
 }
 
 // CreatePlugin 创建插件（管理员）
@@ -41,7 +42,7 @@ func (h *PluginHandler) CreatePlugin(c *gin.Context) {
 
 	plugin, err := h.pluginService.Create(
 		req.Name, req.Title, req.Description,
-		req.Version, req.Author, req.Homepage, req.Config,
+		req.Version, req.Author, req.Homepage, req.Config, req.Type,
 	)
 	if err != nil {
 		response.InternalError(c, "创建插件失败："+err.Error())
@@ -117,12 +118,57 @@ func (h *PluginHandler) DeletePlugin(c *gin.Context) {
 		return
 	}
 
+	// 检查是否为受保护插件
+	plugin, err := h.pluginService.GetByID(uint(id))
+	if err != nil {
+		response.NotFound(c, "插件不存在")
+		return
+	}
+	if plugin.IsProtected {
+		response.BadRequest(c, "系统内置插件不可删除")
+		return
+	}
+
 	if err := h.pluginService.Delete(uint(id)); err != nil {
 		response.InternalError(c, "删除插件失败")
 		return
 	}
 
 	response.Success(c, nil)
+}
+
+// UploadPlugin 上传插件（管理员）
+func (h *PluginHandler) UploadPlugin(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		response.BadRequest(c, "请上传插件文件")
+		return
+	}
+
+	// 验证文件扩展名
+	if len(file.Filename) < 4 || file.Filename[len(file.Filename)-4:] != ".zip" {
+		response.BadRequest(c, "仅支持 .zip 格式的插件包")
+		return
+	}
+
+	// 暂时只返回成功提示（实际解压逻辑后续实现）
+	// 调用 service.Create 创建插件记录，基本信息从文件名提取
+	plugin, err := h.pluginService.Create(
+		file.Filename[:len(file.Filename)-4], // name: 去掉 .zip 后缀
+		file.Filename[:len(file.Filename)-4], // title: 同 name
+		"",                                    // description
+		"1.0.0",                               // version
+		"",                                    // author
+		"",                                    // homepage
+		"",                                    // config
+		"feature",                             // type
+	)
+	if err != nil {
+		response.InternalError(c, "创建插件记录失败："+err.Error())
+		return
+	}
+
+	response.Success(c, plugin)
 }
 
 // ListPlugins 插件列表（管理员）

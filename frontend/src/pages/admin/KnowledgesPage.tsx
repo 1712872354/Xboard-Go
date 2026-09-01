@@ -18,7 +18,7 @@ import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatDate } from '@/lib/utils'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, ArrowUp, ArrowDown } from 'lucide-react'
 
 const useAdminKnowledges = (page = 1, pageSize = 20) =>
   useQuery({
@@ -145,7 +145,17 @@ export default function KnowledgesPage() {
                       <TableCell>
                         <Badge variant={k.show === 1 ? 'success' : 'secondary'}>{k.show === 1 ? '显示' : '隐藏'}</Badge>
                       </TableCell>
-                      <TableCell>{k.sort}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm">{k.sort}</span>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => updateKb.mutate({ id: k.id, sort: k.sort - 1 })}>
+                            <ArrowUp className="h-3 w-3" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => updateKb.mutate({ id: k.id, sort: k.sort + 1 })}>
+                            <ArrowDown className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
                       <TableCell className="text-xs">{formatDate(k.created_at)}</TableCell>
                       <TableCell className="text-right space-x-1">
                         <Button size="icon" variant="ghost" onClick={() => openEdit(k)}>
@@ -180,18 +190,18 @@ export default function KnowledgesPage() {
           <form onSubmit={handleSubmit(dialog === 'create' ? handleCreate : handleEdit)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>标题</Label>
+                <Label>标题<span className="text-destructive"> *</span></Label>
                 <Input {...register('title')} />
                 {errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}
               </div>
               <div className="space-y-2">
-                <Label>分类</Label>
+                <Label>分类<span className="text-destructive"> *</span></Label>
                 <Input {...register('category')} />
                 {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
               </div>
             </div>
             <div className="space-y-2">
-              <Label>内容</Label>
+              <Label>内容<span className="text-destructive"> *</span></Label>
               <Textarea {...register('content')} rows={6} />
               {errors.content && <p className="text-xs text-destructive">{errors.content.message}</p>}
             </div>

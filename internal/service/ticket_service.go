@@ -21,7 +21,7 @@ type TicketService interface {
 	// ListUserTickets 用户工单列表
 	ListUserTickets(userID uint, page, pageSize int, status int) ([]model.Ticket, int64, error)
 	// ListAllTickets 所有工单列表（管理员）
-	ListAllTickets(page, pageSize int, status int, category int) ([]model.Ticket, int64, error)
+	ListAllTickets(page, pageSize int, status int, category int, keyword string) ([]model.Ticket, int64, error)
 	// GetStats 获取工单统计
 	GetStats(userID uint, isAdmin bool) (*TicketStats, error)
 	// DeleteTicket 删除工单（管理员）
@@ -196,14 +196,14 @@ func (s *ticketService) ListUserTickets(userID uint, page, pageSize int, status 
 }
 
 // ListAllTickets 所有工单列表（管理员）
-func (s *ticketService) ListAllTickets(page, pageSize int, status int, category int) ([]model.Ticket, int64, error) {
+func (s *ticketService) ListAllTickets(page, pageSize int, status int, category int, keyword string) ([]model.Ticket, int64, error) {
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	return s.ticketRepo.ListAll(page, pageSize, status, category)
+	return s.ticketRepo.ListAll(page, pageSize, status, category, keyword)
 }
 
 // GetStats 获取工单统计

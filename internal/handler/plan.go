@@ -409,6 +409,31 @@ func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 	response.Success(c, nil)
 }
 
+// AssignOrderRequest 分配订单请求
+type AssignOrderRequest struct {
+	Email  string  `json:"email" binding:"required,email"`
+	PlanID uint    `json:"plan_id" binding:"required"`
+	Period string  `json:"period"`
+	Amount float64 `json:"amount"`
+}
+
+// AssignOrder 管理员为用户分配订单
+func (h *OrderHandler) AssignOrder(c *gin.Context) {
+	var req AssignOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request parameters: "+err.Error())
+		return
+	}
+
+	order, err := h.orderService.AssignOrder(req.Email, req.PlanID, req.Period, req.Amount)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	response.Success(c, order)
+}
+
 // getCurrentUserID 从 context 获取当前用户ID
 // 注意：使用前需确保已通过 JWT 中间件
 func getCurrentUserID(c *gin.Context) uint {

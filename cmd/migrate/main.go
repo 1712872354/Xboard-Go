@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"xboard-go/config"
+	"xboard-go/internal/model"
 	"xboard-go/pkg/database"
 )
 
@@ -34,9 +35,11 @@ func main() {
 		fmt.Println("执行数据库迁移...")
 		if err := db.AutoMigrate(
 			// 在这里添加需要迁移的模型
-			// &model.User{},
-			// &model.Plan{},
-			// &model.Order{},
+			&model.UserToken{},
+			&model.TicketMessage{},
+			&model.Theme{},
+			&model.QuickLoginToken{},
+			&model.MailLoginToken{},
 		); err != nil {
 			log.Fatalf("迁移失败: %v", err)
 		}

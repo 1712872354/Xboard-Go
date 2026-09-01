@@ -23,13 +23,15 @@ type NodeRepository interface {
 	ListVisibleByGroups(groupIDs []uint) ([]model.Node, error)
 	BatchUpdateStatus(ids []uint, status int) error
 	BatchDelete(ids []uint) error
-	BatchMoveGroup(ids []uint, groupID uint) error
+	BatchMoveGroup(ids []uint, groupIDs string) error
 	UpdateSort(id uint, sort int) error
+	BatchSort(items []BatchSortItem) error
+	BatchUpdateFields(ids []uint, show *int, enabled *bool, machineID *uint) error
 	ResetTraffic(id uint) error
 	BatchResetTraffic(ids []uint) error
 	UpdateStatus(id uint, status int) error
 	UpdateOnlineUserCount(id uint, count int) error
-	IncrementTrafficUsed(id uint, delta int64) error
+	IncrementTraffic(id uint, upload, download int64) error
 }
 
 type nodeRepository struct {
@@ -79,7 +81,8 @@ func (r *nodeRepository) List(page, pageSize int, groupID uint) ([]model.Node, i
 	query := r.db.Model(&model.Node{})
 
 	if groupID > 0 {
-		query = query.Where("group_id = ?", groupID)
+		cond, args := model.GroupIDCondition(groupID)
+		query = query.Where(cond, args...)
 	}
 
 	if err := query.Count(&total).Error; err != nil {
@@ -97,14 +100,16 @@ func (r *nodeRepository) List(page, pageSize int, groupID uint) ([]model.Node, i
 // ListByGroup 按分组获取节点
 func (r *nodeRepository) ListByGroup(groupID uint) ([]model.Node, error) {
 	var nodes []model.Node
-	err := r.db.Where("group_id = ?", groupID).Order("sort ASC, id ASC").Find(&nodes).Error
+	cond, args := model.GroupIDCondition(groupID)
+	err := r.db.Where(cond, args...).Order("sort ASC, id ASC").Find(&nodes).Error
 	return nodes, err
 }
 
 // ListOnlineByGroup 按分组获取在线节点
 func (r *nodeRepository) ListOnlineByGroup(groupID uint) ([]model.Node, error) {
 	var nodes []model.Node
-	err := r.db.Where("group_id = ? AND status = ?", groupID, 1).Order("sort ASC, id ASC").Find(&nodes).Error
+	cond, args := model.GroupIDCondition(groupID)
+	err := r.db.Where("("+cond+") AND status = ?", append(args, 1)...).Order("sort ASC, id ASC").Find(&nodes).Error
 	return nodes, err
 }
 
@@ -128,7 +133,8 @@ func (r *nodeRepository) ListVisibleByGroups(groupIDs []uint) ([]model.Node, err
 		return r.ListVisible()
 	}
 	var nodes []model.Node
-	err := r.db.Where("show = ? AND status != ? AND group_id IN ?", 1, 2, groupIDs).
+	cond, args := model.GroupIDsContainAny(groupIDs)
+	err := r.db.Where("show = ? AND status != ? AND "+cond, append([]interface{}{1, 2}, args...)...).
 		Order("sort ASC, id ASC").Find(&nodes).Error
 	return nodes, err
 }
@@ -143,9 +149,9 @@ func (r *nodeRepository) BatchDelete(ids []uint) error {
 	return r.db.Delete(&model.Node{}, ids).Error
 }
 
-// BatchMoveGroup 批量移动节点分组
-func (r *nodeRepository) BatchMoveGroup(ids []uint, groupID uint) error {
-	return r.db.Model(&model.Node{}).Where("id IN ?", ids).Update("group_id", groupID).Error
+// BatchMoveGroup 批量移动节点分组（设置 group_ids）
+func (r *nodeRepository) BatchMoveGroup(ids []uint, groupIDs string) error {
+	return r.db.Model(&model.Node{}).Where("id IN ?", ids).Update("group_ids", groupIDs).Error
 }
 
 // UpdateSort 更新节点排序值
@@ -153,14 +159,52 @@ func (r *nodeRepository) UpdateSort(id uint, sort int) error {
 	return r.db.Model(&model.Node{}).Where("id = ?", id).Update("sort", sort).Error
 }
 
+// BatchSortItem 批量排序项
+type BatchSortItem struct {
+	ID    uint
+	Order int
+}
+
+// BatchSort 批量更新节点排序值
+func (r *nodeRepository) BatchSort(items []BatchSortItem) error {
+	tx := r.db.Begin()
+	for _, item := range items {
+		if err := tx.Model(&model.Node{}).Where("id = ?", item.ID).Update("sort", item.Order).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit().Error
+}
+
+// BatchUpdateFields 批量更新节点属性
+func (r *nodeRepository) BatchUpdateFields(ids []uint, show *int, enabled *bool, machineID *uint) error {
+	updates := map[string]interface{}{}
+	if show != nil {
+		updates["show"] = *show
+	}
+	if enabled != nil {
+		updates["enabled"] = *enabled
+	}
+	if machineID != nil {
+		updates["machine_id"] = *machineID
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	return r.db.Model(&model.Node{}).Where("id IN ?", ids).Updates(updates).Error
+}
+
 // ResetTraffic 重置节点流量统计
 func (r *nodeRepository) ResetTraffic(id uint) error {
-	return r.db.Model(&model.Node{}).Where("id = ?", id).Update("traffic_used", 0).Error
+	return r.db.Model(&model.Node{}).Where("id = ?", id).
+		Updates(map[string]interface{}{"upload_traffic": 0, "download_traffic": 0}).Error
 }
 
 // BatchResetTraffic 批量重置节点流量统计
 func (r *nodeRepository) BatchResetTraffic(ids []uint) error {
-	return r.db.Model(&model.Node{}).Where("id IN ?", ids).Update("traffic_used", 0).Error
+	return r.db.Model(&model.Node{}).Where("id IN ?", ids).
+		Updates(map[string]interface{}{"upload_traffic": 0, "download_traffic": 0}).Error
 }
 
 // UpdateStatus 更新单个节点状态
@@ -173,11 +217,17 @@ func (r *nodeRepository) UpdateOnlineUserCount(id uint, count int) error {
 	return r.db.Model(&model.Node{}).Where("id = ?", id).Update("online_user_count", count).Error
 }
 
-// IncrementTrafficUsed 增加节点累计流量
-func (r *nodeRepository) IncrementTrafficUsed(id uint, delta int64) error {
-	if delta <= 0 {
+// IncrementTraffic 增加节点上/下行流量
+func (r *nodeRepository) IncrementTraffic(id uint, upload, download int64) error {
+	updates := map[string]interface{}{}
+	if upload > 0 {
+		updates["upload_traffic"] = gorm.Expr("upload_traffic + ?", upload)
+	}
+	if download > 0 {
+		updates["download_traffic"] = gorm.Expr("download_traffic + ?", download)
+	}
+	if len(updates) == 0 {
 		return nil
 	}
-	return r.db.Model(&model.Node{}).Where("id = ?", id).
-		UpdateColumn("traffic_used", gorm.Expr("traffic_used + ?", delta)).Error
+	return r.db.Model(&model.Node{}).Where("id = ?", id).UpdateColumns(updates).Error
 }

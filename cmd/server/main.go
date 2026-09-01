@@ -134,17 +134,21 @@ func main() {
 		grpcSrv = grpc.NewServer(grpcPort, cfg)
 
 		// Wire HTTP handlers to gRPC broadcaster for real-time push.
-		handler.NotifyNodeConfigChange = func(nodeID uint, name, typ, address string, port int, serverInfo string, rate float64, groupID, parentID uint) {
+		handler.NotifyNodeConfigChange = func(nodeID uint, name, typ, host string, port int, serverInfo string, rate float64, groupIDs []uint, parentID uint) {
 			if grpc.NodeBroadcaster != nil && grpc.NodeBroadcaster.HasSubscriber(uint32(nodeID)) {
+				grpcGroupIDs := make([]uint32, 0, len(groupIDs))
+				for _, id := range groupIDs {
+					grpcGroupIDs = append(grpcGroupIDs, uint32(id))
+				}
 				grpc.NodeBroadcaster.BroadcastConfig(uint32(nodeID), &grpc.NodeConfig{
 					ID:         uint32(nodeID),
 					Name:       name,
 					Protocol:   typ,
-					Address:    address,
+					Address:    host,
 					Port:       int32(port),
 					ServerInfo: serverInfo,
 					Rate:       float32(rate),
-					GroupID:    uint32(groupID),
+					GroupIDs:   grpcGroupIDs,
 					ParentID:   uint32(parentID),
 				})
 				logger.Sugar().Infof("Broadcasted config update to node %d", nodeID)

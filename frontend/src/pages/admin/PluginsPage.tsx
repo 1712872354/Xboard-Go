@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -16,7 +16,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Plus, Trash2, Settings, Plug, Zap } from 'lucide-react'
+import { Plus, Trash2, Settings, Plug, Zap, Upload } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 const useAdminPlugins = (page = 1, pageSize = 20) =>
   useQuery({
@@ -56,6 +57,20 @@ const useDeletePlugin = () => {
   })
 }
 
+const useUploadPlugin = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      return await api.post('/admin/plugins/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'plugins'] }); toast.success('插件上传成功') },
+  })
+}
+
 const pluginSchema = z.object({
   name: z.string().min(1, '请输入名称'),
   title: z.string().min(1, '请输入标题'),
@@ -69,21 +84,35 @@ type PluginForm = z.infer<typeof pluginSchema>
 
 export default function PluginsPage() {
   const [page, setPage] = useState(1)
+  const [activeTab, setActiveTab] = useState('all')
   const [installDialog, setInstallDialog] = useState(false)
   const [configDialog, setConfigDialog] = useState<Plugin | null>(null)
   const [configValue, setConfigValue] = useState('')
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { data, isLoading } = useAdminPlugins(page)
   const installPlugin = useInstallPlugin()
   const togglePlugin = useTogglePlugin()
   const configurePlugin = useConfigurePlugin()
   const deletePlugin = useDeletePlugin()
+  const uploadPlugin = useUploadPlugin()
 
   const plugins = data?.list ?? []
+  const filteredPlugins = activeTab === 'all' ? plugins : plugins.filter((p) => p.type === activeTab)
   const totalPlugins = data?.total ?? 0
   const enabledCount = plugins.filter((p) => p.status === 1).length
   const disabledCount = plugins.filter((p) => p.status !== 1).length
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.name.endsWith('.zip')) {
+      toast.error('请上传 .zip 格式的插件包')
+      return
+    }
+    uploadPlugin.mutate(file, { onSettled: () => { if (fileInputRef.current) fileInputRef.current.value = '' } })
+  }
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<PluginForm>({
     resolver: zodResolver(pluginSchema),
@@ -108,7 +137,14 @@ export default function PluginsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">插件管理</h1>
-        <Button onClick={() => setInstallDialog(true)}><Plus className="mr-2 h-4 w-4" />安装插件</Button>
+        <div className="flex gap-2">
+          <input type="file" ref={fileInputRef} accept=".zip" className="hidden" onChange={handleUpload} />
+          <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploadPlugin.isPending}>
+            <Upload className="mr-2 h-4 w-4" />
+            {uploadPlugin.isPending ? '上传中...' : '上传插件'}
+          </Button>
+          <Button onClick={() => setInstallDialog(true)}><Plus className="mr-2 h-4 w-4" />安装插件</Button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -135,6 +171,14 @@ export default function PluginsPage() {
         </Card>
       </div>
 
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="all">全部插件</TabsTrigger>
+          <TabsTrigger value="feature">功能插件</TabsTrigger>
+          <TabsTrigger value="payment">支付插件</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       <Card>
         <CardHeader />
         <CardContent>
@@ -147,6 +191,7 @@ export default function PluginsPage() {
                   <TableRow>
                     <TableHead>标题</TableHead>
                     <TableHead>名称</TableHead>
+                    <TableHead>类型</TableHead>
                     <TableHead>描述</TableHead>
                     <TableHead>版本</TableHead>
                     <TableHead>作者</TableHead>
@@ -155,10 +200,18 @@ export default function PluginsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {plugins.map((p) => (
+                  {filteredPlugins.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">{p.title}</TableCell>
                       <TableCell className="font-mono text-xs">{p.name}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={p.type === 'feature' ? 'bg-blue-500/10 text-blue-600 border-blue-500/25' : p.type === 'payment' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/25' : undefined}
+                        >
+                          {p.type === 'payment' ? '支付' : p.type === 'feature' ? '功能' : p.type || '-'}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="max-w-48 truncate text-muted-foreground">{p.description || '-'}</TableCell>
                       <TableCell>{p.version || '-'}</TableCell>
                       <TableCell>{p.author || '-'}</TableCell>
@@ -166,7 +219,7 @@ export default function PluginsPage() {
                         <Badge variant={p.status === 1 ? 'success' : 'secondary'}>{p.status === 1 ? '启用' : '禁用'}</Badge>
                       </TableCell>
                       <TableCell className="text-right space-x-1">
-                        <Switch checked={p.status === 1} onCheckedChange={() => togglePlugin.mutate({ id: p.id, status: p.status === 1 ? 0 : 1 })} />
+                        <Switch checked={p.status === 1} onCheckedChange={() => togglePlugin.mutate({ id: p.id, status: p.status === 1 ? 0 : 1 })} aria-label="启用" />
                         <Button size="icon" variant="ghost" onClick={() => { setConfigDialog(p); setConfigValue(p.config || '{}') }} title="配置">
                           <Settings className="h-4 w-4" />
                         </Button>

@@ -6,23 +6,22 @@ import (
 	"errors"
 	"fmt"
 
-	"xboard-go/config"
 	"xboard-go/internal/model"
 	"xboard-go/internal/repository"
 )
 
 // ServerMachineService 服务器机器服务接口
 type ServerMachineService interface {
-	Create(name, host string, port int, protocol string) (*model.ServerMachine, error)
+	Create(name, notes string) (*model.ServerMachine, error)
 	GetByID(id uint) (*model.ServerMachine, error)
-	Update(id uint, name, host string, port int, protocol string, status int) (*model.ServerMachine, error)
+	Update(id uint, name string, isActive bool, notes string) (*model.ServerMachine, error)
 	Delete(id uint) error
 	List(page, pageSize int) ([]model.ServerMachine, int64, error)
 	ListAll() ([]model.ServerMachine, error)
-	UpdateStatus(id uint, status int) error
+	UpdateStatus(id uint, isActive bool) error
 	UpdateLoad(id uint, cpu, memory, disk float64) error
 	ResetToken(id uint) (*model.ServerMachine, error)
-	GetInstallCommand(id uint) (string, error)
+	GetInstallCommand(id uint, panelURL string) (string, error)
 }
 
 type serverMachineService struct {
@@ -37,7 +36,7 @@ func NewServerMachineService(machineRepo repository.ServerMachineRepository) Ser
 }
 
 // Create 创建服务器机器
-func (s *serverMachineService) Create(name, host string, port int, protocol string) (*model.ServerMachine, error) {
+func (s *serverMachineService) Create(name, notes string) (*model.ServerMachine, error) {
 	token, err := generateToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %w", err)
@@ -45,11 +44,9 @@ func (s *serverMachineService) Create(name, host string, port int, protocol stri
 
 	machine := &model.ServerMachine{
 		Name:     name,
-		Host:     host,
-		Port:     port,
-		Protocol: protocol,
+		Notes:    notes,
 		Token:    token,
-		Status:   1,
+		IsActive: true,
 	}
 
 	if err := s.machineRepo.Create(machine); err != nil {
@@ -72,7 +69,7 @@ func (s *serverMachineService) GetByID(id uint) (*model.ServerMachine, error) {
 }
 
 // Update 更新服务器机器
-func (s *serverMachineService) Update(id uint, name, host string, port int, protocol string, status int) (*model.ServerMachine, error) {
+func (s *serverMachineService) Update(id uint, name string, isActive bool, notes string) (*model.ServerMachine, error) {
 	machine, err := s.machineRepo.GetByID(id)
 	if err != nil {
 		return nil, err
@@ -82,10 +79,8 @@ func (s *serverMachineService) Update(id uint, name, host string, port int, prot
 	}
 
 	machine.Name = name
-	machine.Host = host
-	machine.Port = port
-	machine.Protocol = protocol
-	machine.Status = status
+	machine.Notes = notes
+	machine.IsActive = isActive
 
 	if err := s.machineRepo.Update(machine); err != nil {
 		return nil, err
@@ -124,7 +119,7 @@ func (s *serverMachineService) ListAll() ([]model.ServerMachine, error) {
 }
 
 // UpdateStatus 更新服务器机器状态
-func (s *serverMachineService) UpdateStatus(id uint, status int) error {
+func (s *serverMachineService) UpdateStatus(id uint, isActive bool) error {
 	machine, err := s.machineRepo.GetByID(id)
 	if err != nil {
 		return err
@@ -133,7 +128,7 @@ func (s *serverMachineService) UpdateStatus(id uint, status int) error {
 		return errors.New("server machine not found")
 	}
 
-	return s.machineRepo.UpdateStatus(id, status)
+	return s.machineRepo.UpdateStatus(id, isActive)
 }
 
 // UpdateLoad 更新服务器机器负载
@@ -173,7 +168,7 @@ func (s *serverMachineService) ResetToken(id uint) (*model.ServerMachine, error)
 }
 
 // GetInstallCommand 生成安装命令
-func (s *serverMachineService) GetInstallCommand(id uint) (string, error) {
+func (s *serverMachineService) GetInstallCommand(id uint, panelURL string) (string, error) {
 	machine, err := s.machineRepo.GetByID(id)
 	if err != nil {
 		return "", err
@@ -185,10 +180,9 @@ func (s *serverMachineService) GetInstallCommand(id uint) (string, error) {
 		return "", errors.New("machine token not set, please reset token first")
 	}
 
-	cfg := config.Get()
-	panelURL := fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)
-	cmd := fmt.Sprintf("curl -fsSL %s/install.sh | bash -s -- --panel-url %s --api-key %s --node-id %d",
-		panelURL, panelURL, machine.Token, machine.ID)
+	scriptURL := "https://raw.githubusercontent.com/1712872354/Xboard-Node-Go/main/install.sh"
+	cmd := fmt.Sprintf("curl -fsSL %s | bash -s -- --mode machine --panel %s --token %s --machine-id %d",
+		scriptURL, panelURL, machine.Token, machine.ID)
 
 	return cmd, nil
 }

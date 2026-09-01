@@ -61,10 +61,9 @@ func (h *NodeServerHandler) Handshake(c *gin.Context) {
 			return
 		}
 		// 标记 machine 在线
-		now := time.Now()
 		db.Model(&machine).Updates(map[string]interface{}{
-			"status":      1,
-			"last_online": &now,
+			"is_active":   true,
+			"last_seen_at": time.Now().Unix(),
 		})
 	}
 
@@ -626,9 +625,11 @@ func processNodeStatus(nodeID uint32, status map[string]interface{}) {
 				diskPercent = float64(diskUsed) / float64(diskTotal) * 100
 			}
 			db.Model(&model.ServerMachine{}).Where("id = ?", uint(machineID)).Updates(map[string]interface{}{
-				"cpu_percent":  cpu,
-				"mem_percent":  memPercent,
-				"disk_percent": diskPercent,
+				"cpu":           cpu,
+				"memory":        memPercent,
+				"disk":          diskPercent,
+				"is_active":     true,
+				"last_seen_at":  time.Now().Unix(),
 			})
 		}
 	}
@@ -666,7 +667,7 @@ func (h *NodeServerHandler) GetMachineNodes(c *gin.Context) {
 
 	db := database.Get()
 	var nodes []model.Node
-	if err := db.Where("server_info LIKE ?", fmt.Sprintf(`%%"machine_id":%d%%`, machineID)).Find(&nodes).Error; err != nil {
+	if err := db.Where("machine_id = ?", machineID).Find(&nodes).Error; err != nil {
 		c.JSON(http.StatusOK, gin.H{"error": "failed to query nodes"})
 		return
 	}
@@ -674,9 +675,10 @@ func (h *NodeServerHandler) GetMachineNodes(c *gin.Context) {
 	nodeList := make([]gin.H, 0, len(nodes))
 	for _, n := range nodes {
 		nodeList = append(nodeList, gin.H{
-			"id":   n.ID,
-			"type": n.Type,
-			"name": n.Name,
+			"id":      n.ID,
+			"type":    n.Type,
+			"name":    n.Name,
+			"enabled": n.Enabled,
 		})
 	}
 
@@ -699,29 +701,71 @@ func (h *NodeServerHandler) ReportMachineStatus(c *gin.Context) {
 
 	body := middleware.GetNodeBody(c)
 
-	// 更新 machine 状态
 	db := database.Get()
-	updates := map[string]interface{}{"status": 1}
+	now := time.Now().Unix()
+	updates := map[string]interface{}{
+		"is_active":   true,
+		"last_seen_at": now,
+	}
 
-	if status, ok := body["cpu"].(float64); ok {
-		updates["cpu_percent"] = status
+	loadStatus := make(map[string]interface{})
+
+	if cpu, ok := body["cpu"].(float64); ok {
+		updates["cpu"] = cpu
+		loadStatus["cpu"] = cpu
 	}
+	var memTotal, memUsed uint64
 	if mem, ok := body["mem"].(map[string]interface{}); ok {
-		total, _ := toUint64(mem["total"])
-		used, _ := toUint64(mem["used"])
-		if total > 0 {
-			updates["mem_percent"] = float64(used) / float64(total) * 100
+		memTotal, _ = toUint64(mem["total"])
+		memUsed, _ = toUint64(mem["used"])
+		if memTotal > 0 {
+			updates["memory"] = float64(memUsed) / float64(memTotal) * 100
 		}
+		loadStatus["mem_total"] = memTotal
+		loadStatus["mem_used"] = memUsed
 	}
+	var diskTotal, diskUsed uint64
 	if disk, ok := body["disk"].(map[string]interface{}); ok {
-		total, _ := toUint64(disk["total"])
-		used, _ := toUint64(disk["used"])
-		if total > 0 {
-			updates["disk_percent"] = float64(used) / float64(total) * 100
+		diskTotal, _ = toUint64(disk["total"])
+		diskUsed, _ = toUint64(disk["used"])
+		if diskTotal > 0 {
+			updates["disk"] = float64(diskUsed) / float64(diskTotal) * 100
 		}
+		loadStatus["disk_total"] = diskTotal
+		loadStatus["disk_used"] = diskUsed
+	}
+	if net, ok := body["net"].(map[string]interface{}); ok {
+		inSpeed, _ := toUint64(net["in_speed"])
+		outSpeed, _ := toUint64(net["out_speed"])
+		loadStatus["net_in_speed"] = inSpeed
+		loadStatus["net_out_speed"] = outSpeed
+	}
+
+	if loadStatusJSON, err := json.Marshal(loadStatus); err == nil {
+		updates["load_status"] = string(loadStatusJSON)
 	}
 
 	db.Model(&model.ServerMachine{}).Where("id = ?", machineID).Updates(updates)
+
+	// 记录负载历史
+	cpuVal, _ := updates["cpu"].(float64)
+	history := &model.ServerMachineLoadHistory{
+		MachineID:  uint(machineID),
+		CPU:        cpuVal,
+		MemTotal:   memTotal,
+		MemUsed:    memUsed,
+		DiskTotal:  diskTotal,
+		DiskUsed:   diskUsed,
+		RecordedAt: now,
+	}
+	if v, ok := loadStatus["net_in_speed"].(uint64); ok {
+		history.NetInSpeed = float64(v)
+	}
+	if v, ok := loadStatus["net_out_speed"].(uint64); ok {
+		history.NetOutSpeed = float64(v)
+	}
+	db.Create(history)
+
 	c.JSON(http.StatusOK, gin.H{})
 }
 

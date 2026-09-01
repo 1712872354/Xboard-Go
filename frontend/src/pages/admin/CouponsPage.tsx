@@ -16,7 +16,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatDate, formatCurrency } from '@/lib/utils'
-import { Plus, Pencil, Trash2, Copy, Ticket, CheckCircle, Tag } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Plus, Pencil, Trash2, Copy, Ticket, CheckCircle, Tag, Search, Loader2 } from 'lucide-react'
+
+const PERIOD_OPTIONS = [
+  { value: 'month_price', label: '月付' },
+  { value: 'quarter_price', label: '季付' },
+  { value: 'half_year_price', label: '半年付' },
+  { value: 'year_price', label: '年付' },
+  { value: 'two_year_price', label: '两年付' },
+  { value: 'three_year_price', label: '三年付' },
+  { value: 'once_price', label: '一次性' },
+  { value: 'reset_price', label: '重置包' },
+] as const
+
+const QUICK_DATES = [
+  { label: '1周', days: 7 },
+  { label: '2周', days: 14 },
+  { label: '1月', days: 30 },
+  { label: '3月', days: 90 },
+  { label: '6月', days: 180 },
+  { label: '1年', days: 365 },
+] as const
 
 const useAdminCoupons = (page = 1, pageSize = 20) =>
   useQuery({
@@ -56,6 +77,8 @@ const couponSchema = z.object({
   min_amount: z.coerce.number().min(0).optional(),
   max_discount: z.coerce.number().min(0).optional(),
   limit_count: z.coerce.number().min(0).optional(),
+  limit_use_with_user: z.coerce.number().min(0).optional(),
+  generate_count: z.coerce.number().min(1).optional(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
 })
@@ -68,6 +91,9 @@ export default function CouponsPage() {
   const [editItem, setEditItem] = useState<Coupon | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [typeValue, setTypeValue] = useState('0')
+  const [limitPeriod, setLimitPeriod] = useState<string[]>([])
+  const [couponSearch, setCouponSearch] = useState('')
+  const [couponTypeFilter, setCouponTypeFilter] = useState('all')
 
   const { data, isLoading } = useAdminCoupons(page)
   const createCoupon = useCreateCoupon()
@@ -75,6 +101,11 @@ export default function CouponsPage() {
   const deleteCoupon = useDeleteCoupon()
 
   const coupons = data?.list ?? []
+  const filteredCoupons = coupons.filter((c) => {
+    const matchSearch = !couponSearch || c.code.toLowerCase().includes(couponSearch.toLowerCase()) || c.name.toLowerCase().includes(couponSearch.toLowerCase())
+    const matchType = couponTypeFilter === 'all' || String(c.type) === couponTypeFilter
+    return matchSearch && matchType
+  })
   const totalCoupons = data?.total ?? 0
   const usedCount = coupons.reduce((sum, c) => sum + c.used_count, 0)
   const availableCount = coupons.filter((c) => c.status === 1).length
@@ -84,25 +115,29 @@ export default function CouponsPage() {
   })
 
   const openCreate = () => {
-    reset({ code: '', name: '', type: 0, value: 0, min_amount: 0, max_discount: 0, limit_count: 1, start_date: '', end_date: '' })
+    reset({ code: '', name: '', type: 0, value: 0, min_amount: 0, max_discount: 0, limit_count: 1, limit_use_with_user: 1, generate_count: 1, start_date: '', end_date: '' })
     setTypeValue('0')
+    setLimitPeriod([])
     setDialog('create')
   }
 
   const openEdit = (c: Coupon) => {
-    reset({ code: c.code, name: c.name, type: c.type, value: c.value, min_amount: c.min_amount, max_discount: c.max_discount, limit_count: c.limit_count, start_date: c.start_date, end_date: c.end_date })
+    reset({ code: c.code, name: c.name, type: c.type, value: c.value, min_amount: c.min_amount, max_discount: c.max_discount, limit_count: c.limit_count, limit_use_with_user: c.limit_use_with_user ?? 1, start_date: c.start_date, end_date: c.end_date })
     setTypeValue(String(c.type))
+    setLimitPeriod(c.limit_period ? c.limit_period.split(',').filter(Boolean) : [])
     setEditItem(c)
     setDialog('edit')
   }
 
   const handleCreate = (data: CouponForm) => {
-    createCoupon.mutate({ ...data, type: Number(typeValue) }, { onSuccess: () => setDialog(null) })
+    const limit_period = limitPeriod.length > 0 ? limitPeriod.join(',') : ''
+    createCoupon.mutate({ ...data, type: Number(typeValue), limit_period, generate_count: data.generate_count && data.generate_count > 1 ? data.generate_count : undefined }, { onSuccess: () => setDialog(null) })
   }
 
   const handleEdit = (data: CouponForm) => {
     if (!editItem) return
-    updateCoupon.mutate({ id: editItem.id, ...data, type: Number(typeValue) }, { onSuccess: () => { setDialog(null); setEditItem(null) } })
+    const limit_period = limitPeriod.length > 0 ? limitPeriod.join(',') : ''
+    updateCoupon.mutate({ id: editItem.id, ...data, type: Number(typeValue), limit_period }, { onSuccess: () => { setDialog(null); setEditItem(null) } })
   }
 
   const handleDelete = () => {
@@ -148,7 +183,22 @@ export default function CouponsPage() {
       </div>
 
       <Card>
-        <CardHeader />
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="搜索优惠码/名称..." className="pl-8" value={couponSearch} onChange={(e) => setCouponSearch(e.target.value)} />
+            </div>
+            <Select value={couponTypeFilter} onValueChange={setCouponTypeFilter}>
+              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部类型</SelectItem>
+                <SelectItem value="0">固定金额</SelectItem>
+                <SelectItem value="1">百分比</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
@@ -168,7 +218,7 @@ export default function CouponsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {coupons.map((c) => (
+                  {filteredCoupons.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell>
                         <div className="flex items-center gap-1">
@@ -188,7 +238,10 @@ export default function CouponsPage() {
                         {c.start_date ? `${c.start_date} ~ ${c.end_date}` : '永久'}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={c.status === 1 ? 'success' : 'secondary'}>{c.status === 1 ? '可用' : '禁用'}</Badge>
+                        <Switch
+                          checked={c.status === 1}
+                          onCheckedChange={() => updateCoupon.mutate({ id: c.id, status: c.status === 1 ? 0 : 1 })}
+                        />
                       </TableCell>
                       <TableCell className="text-right space-x-1">
                         <Button size="icon" variant="ghost" onClick={() => openEdit(c)}>
@@ -223,12 +276,12 @@ export default function CouponsPage() {
           <form onSubmit={handleSubmit(dialog === 'create' ? handleCreate : handleEdit)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>优惠码</Label>
+                <Label>优惠码<span className="text-destructive"> *</span></Label>
                 <Input {...register('code')} />
                 {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
               </div>
               <div className="space-y-2">
-                <Label>名称</Label>
+                <Label>名称<span className="text-destructive"> *</span></Label>
                 <Input {...register('name')} />
                 {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
               </div>
@@ -265,17 +318,75 @@ export default function CouponsPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
+                <Label>每用户可用次数</Label>
+                <Input type="number" {...register('limit_use_with_user')} placeholder="0 表示不限制" />
+              </div>
+              {dialog === 'create' && (
+                <div className="space-y-2">
+                  <Label>批量生成数量</Label>
+                  <Input type="number" {...register('generate_count')} placeholder="默认 1" />
+                </div>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>指定周期限制</Label>
+              <div className="flex flex-wrap gap-2">
+                {PERIOD_OPTIONS.map((opt) => {
+                  const selected = limitPeriod.includes(opt.value)
+                  return (
+                    <Badge
+                      key={opt.value}
+                      variant={selected ? 'default' : 'outline'}
+                      className="cursor-pointer select-none"
+                      onClick={() => {
+                        setLimitPeriod((prev) =>
+                          selected ? prev.filter((v) => v !== opt.value) : [...prev, opt.value]
+                        )
+                      }}
+                    >
+                      {opt.label}
+                    </Badge>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">留空表示不限制</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
                 <Label>开始日期</Label>
                 <Input type="date" {...register('start_date')} />
               </div>
               <div className="space-y-2">
                 <Label>结束日期</Label>
                 <Input type="date" {...register('end_date')} />
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {QUICK_DATES.map((qd) => (
+                    <Button
+                      key={qd.days}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => {
+                        const now = new Date()
+                        const end = new Date(now.getTime() + qd.days * 24 * 60 * 60 * 1000)
+                        const dateStr = end.toISOString().split('T')[0]
+                        const startStr = now.toISOString().split('T')[0]
+                        reset((prev) => ({ ...prev, start_date: startStr, end_date: dateStr }))
+                      }}
+                    >
+                      {qd.label}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialog(null)}>取消</Button>
-              <Button type="submit">保存</Button>
+              <Button type="submit" disabled={createCoupon.isPending || updateCoupon.isPending}>
+                {(createCoupon.isPending || updateCoupon.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                保存
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

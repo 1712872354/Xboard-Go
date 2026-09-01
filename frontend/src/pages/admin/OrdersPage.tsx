@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { toast } from 'sonner'
 import api from '@/lib/api'
+import { usePlans } from '@/hooks/usePlans'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
@@ -13,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatCurrency, formatDate, formatBytes } from '@/lib/utils'
-import { CheckCircle, Search, Eye, Loader2 } from 'lucide-react'
+import { CheckCircle, Search, Eye, Loader2, Plus, RotateCcw } from 'lucide-react'
 import type { Order, PaginatedResponse } from '@/types'
 
 const statusOptions = [
@@ -31,15 +35,61 @@ const statusMap: Record<number, { label: string; variant: 'default' | 'secondary
   3: { label: '已退款', variant: 'destructive' },
 }
 
+const periodOptions = [
+  { value: 'month_price', label: '月付' },
+  { value: 'quarter_price', label: '季付' },
+  { value: 'half_year_price', label: '半年付' },
+  { value: 'year_price', label: '年付' },
+  { value: 'two_year_price', label: '两年付' },
+  { value: 'three_year_price', label: '三年付' },
+  { value: 'once_price', label: '一次性' },
+  { value: 'reset_price', label: '重置包' },
+]
+
+const assignSchema = z.object({
+  email: z.string().min(1, '请输入用户邮箱').email('请输入有效的邮箱'),
+  plan_id: z.coerce.number().min(1, '请选择套餐'),
+  period: z.string().min(1, '请选择购买时长'),
+  amount: z.coerce.number().min(0, '金额不能为负'),
+})
+
+type AssignForm = z.infer<typeof assignSchema>
+
 export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchKeyword, setSearchKeyword] = useState('')
   const [confirmTradeNo, setConfirmTradeNo] = useState<string | null>(null)
   const [viewOrder, setViewOrder] = useState<Order | null>(null)
+  const [showAssign, setShowAssign] = useState(false)
 
   const qc = useQueryClient()
   const statusNum = statusFilter === 'all' ? undefined : Number(statusFilter)
+
+  const { data: plans } = usePlans()
+
+  const assignForm = useForm<AssignForm>({
+    resolver: zodResolver(assignSchema),
+    defaultValues: { email: '', plan_id: 0, period: '', amount: 0 },
+  })
+
+  const assignOrder = useMutation({
+    mutationFn: async (data: AssignForm) =>
+      await api.post('/admin/orders/assign', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'orders'] })
+      toast.success('订单分配成功')
+      setShowAssign(false)
+      assignForm.reset()
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || '分配订单失败')
+    },
+  })
+
+  const handleAssignSubmit = (data: AssignForm) => {
+    assignOrder.mutate(data)
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'orders', page, statusNum, searchKeyword],
@@ -72,6 +122,10 @@ export default function OrdersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">订单管理</h1>
+        <Button onClick={() => setShowAssign(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          分配订单
+        </Button>
       </div>
 
       <Card>
@@ -102,6 +156,15 @@ export default function OrdersPage() {
               >
                 <Search className="h-4 w-4" />
               </Button>
+              {(statusFilter !== 'all' || searchKeyword) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { setStatusFilter('all'); setSearchKeyword(''); }}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -273,6 +336,77 @@ export default function OrdersPage() {
               确认
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Order Dialog */}
+      <Dialog open={showAssign} onOpenChange={(v) => { setShowAssign(v); if (!v) assignForm.reset() }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>分配订单</DialogTitle>
+            <DialogDescription>为指定用户分配一个新订单</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={assignForm.handleSubmit(handleAssignSubmit)} className="space-y-4">
+            <div className="space-y-2">
+              <Label>用户邮箱</Label>
+              <Input {...assignForm.register('email')} placeholder="请输入用户邮箱" />
+              {assignForm.formState.errors.email && (
+                <p className="text-xs text-destructive">{assignForm.formState.errors.email.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>套餐</Label>
+              <Select
+                onValueChange={(v) => assignForm.setValue('plan_id', Number(v))}
+                value={assignForm.watch('plan_id') ? String(assignForm.watch('plan_id')) : ''}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="请选择套餐" />
+                </SelectTrigger>
+                <SelectContent>
+                  {plans?.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {assignForm.formState.errors.plan_id && (
+                <p className="text-xs text-destructive">{assignForm.formState.errors.plan_id.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>购买时长</Label>
+              <Select
+                onValueChange={(v) => assignForm.setValue('period', v)}
+                value={assignForm.watch('period')}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="请选择购买时长" />
+                </SelectTrigger>
+                <SelectContent>
+                  {periodOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {assignForm.formState.errors.period && (
+                <p className="text-xs text-destructive">{assignForm.formState.errors.period.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>支付金额（分）</Label>
+              <Input type="number" {...assignForm.register('amount')} placeholder="请输入金额，单位分" />
+              {assignForm.formState.errors.amount && (
+                <p className="text-xs text-destructive">{assignForm.formState.errors.amount.message}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => { setShowAssign(false); assignForm.reset() }}>取消</Button>
+              <Button type="submit" disabled={assignOrder.isPending}>
+                {assignOrder.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                确认分配
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

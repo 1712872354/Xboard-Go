@@ -36,8 +36,10 @@ type Ticket struct {
 	Subject   string         `gorm:"type:varchar(200);not null" json:"subject"`
 	Category  int            `gorm:"type:smallint;default:0;index" json:"category"` // 0:一般 1:账单 2:技术 3:账户
 	Priority  int            `gorm:"type:smallint;default:1;index" json:"priority"` // 0:低 1:普通 2:高
-	Status    int            `gorm:"type:smallint;default:0;index" json:"status"`   // 0:待处理 1:已回复 2:已关闭
-	LastReply *time.Time     `gorm:"index" json:"last_reply"`
+	Status         int            `gorm:"type:smallint;default:0;index" json:"status"`   // 0:待处理 1:已回复 2:已关闭
+	ReplyStatus    int            `gorm:"default:0" json:"reply_status"`               // 回复状态：0=待回复 1=已回复
+	LastReply      *time.Time     `gorm:"index" json:"last_reply"`
+	LastReplyUserID *uint         `json:"last_reply_user_id"`                          // 最后回复人ID
 	Replies   []TicketReply  `gorm:"foreignKey:TicketID" json:"replies,omitempty"`
 	User      *User          `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	CreatedAt time.Time      `json:"created_at"`

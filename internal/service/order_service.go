@@ -21,6 +21,7 @@ type OrderService interface {
 	ListOrders(page, pageSize int, status int, userID uint) ([]model.Order, int64, error)
 	ConfirmPayment(tradeNo string) error
 	CancelOrder(orderID uint, userID uint) error
+	AssignOrder(email string, planID uint, period string, amount float64) (*model.Order, error)
 }
 
 type orderService struct {
@@ -268,6 +269,64 @@ func (s *orderService) CancelOrder(orderID uint, userID uint) error {
 	}
 
 	return s.orderRepo.UpdateStatus(orderID, model.OrderStatusCancelled, nil)
+}
+
+// AssignOrder 管理员为用户分配订单
+func (s *orderService) AssignOrder(email string, planID uint, period string, amount float64) (*model.Order, error) {
+	// 根据邮箱查找用户
+	user, err := s.userRepo.GetByEmail(email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+
+	// 检查套餐是否存在
+	plan, err := s.planRepo.GetByID(planID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get plan: %w", err)
+	}
+	if plan == nil {
+		return nil, errors.New("plan not found")
+	}
+
+	// 生成商户订单号
+	tradeNo, err := generateTradeNo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate trade no: %w", err)
+	}
+
+	// 如果未指定金额，使用套餐价格
+	if amount <= 0 {
+		amount = plan.Price
+	}
+
+	// 创建订单（管理员分配的订单直接标记为已支付）
+	now := time.Now()
+	order := &model.Order{
+		UserID:        user.ID,
+		PlanID:        planID,
+		Amount:        amount,
+		ActualAmount:  amount,
+		Status:        model.OrderStatusPaid,
+		PaymentMethod: "manual",
+		TradeNo:       tradeNo,
+		PaidAt:        &now,
+	}
+
+	if err := s.orderRepo.Create(order); err != nil {
+		return nil, fmt.Errorf("failed to create order: %w", err)
+	}
+
+	// 为用户增加流量和时长
+	userService := NewUserService(s.userRepo)
+	if err := userService.AddTraffic(user.ID, plan.Traffic, plan.DurationDays); err != nil {
+		return nil, fmt.Errorf("failed to add traffic to user: %w", err)
+	}
+
+	// 重新加载订单（包含套餐信息）
+	return s.orderRepo.GetByID(order.ID)
 }
 
 // generateTradeNo 生成商户订单号

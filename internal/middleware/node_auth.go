@@ -8,6 +8,8 @@ import (
 	"strconv"
 
 	"xboard-go/config"
+	"xboard-go/internal/model"
+	"xboard-go/pkg/database"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,11 +25,6 @@ import (
 func NodeAPIKeyAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		expectedKey := config.Get().App.NodeAPIKey
-		if expectedKey == "" {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "node_api_key not configured"})
-			c.Abort()
-			return
-		}
 
 		var token, nodeIDStr, machineIDStr string
 		var bodyMap map[string]interface{}
@@ -87,10 +84,31 @@ func NodeAPIKeyAuth() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		if token != expectedKey {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			c.Abort()
-			return
+
+		if machineIDStr != "" {
+			machineID, _ := strconv.ParseUint(machineIDStr, 10, 32)
+			var machine model.ServerMachine
+			if err := database.Get().Where("id = ?", machineID).First(&machine).Error; err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid machine_id"})
+				c.Abort()
+				return
+			}
+			if token != machine.Token {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+				c.Abort()
+				return
+			}
+		} else {
+			if expectedKey == "" {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "node_api_key not configured"})
+				c.Abort()
+				return
+			}
+			if token != expectedKey {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+				c.Abort()
+				return
+			}
 		}
 
 		// 支持 machine_id 或 node_id（至少需要一个）

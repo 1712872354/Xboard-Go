@@ -6,6 +6,7 @@ import (
 
 	"xboard-go/config"
 	"xboard-go/internal/model"
+	"xboard-go/internal/repository"
 	bizerrors "xboard-go/pkg/errors"
 	"xboard-go/pkg/utils"
 
@@ -71,8 +72,8 @@ func (m *MockUserRepository) UpdateTraffic(userID uint, traffic int64) error {
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) List(page, pageSize int, keyword string) ([]model.User, int64, error) {
-	args := m.Called(page, pageSize, keyword)
+func (m *MockUserRepository) List(page, pageSize int, filter repository.UserFilter) ([]model.User, int64, error) {
+	args := m.Called(page, pageSize, filter)
 	return args.Get(0).([]model.User), args.Get(1).(int64), args.Error(2)
 }
 

@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"xboard-go/internal/model"
 	"xboard-go/internal/service"
+	"xboard-go/pkg/database"
 	"xboard-go/pkg/response"
 )
 
@@ -22,10 +25,8 @@ func NewServerMachineHandler(machineService service.ServerMachineService) *Serve
 
 // CreateServerMachineRequest 创建服务器机器请求
 type CreateServerMachineRequest struct {
-	Name     string `json:"name" binding:"required"`
-	Host     string `json:"host" binding:"required"`
-	Port     int    `json:"port" binding:"required"`
-	Protocol string `json:"protocol"`
+	Name  string `json:"name" binding:"required"`
+	Notes string `json:"notes"`
 }
 
 // CreateServerMachine 创建服务器机器（管理员）
@@ -36,7 +37,7 @@ func (h *ServerMachineHandler) CreateServerMachine(c *gin.Context) {
 		return
 	}
 
-	machine, err := h.machineService.Create(req.Name, req.Host, req.Port, req.Protocol)
+	machine, err := h.machineService.Create(req.Name, req.Notes)
 	if err != nil {
 		response.InternalError(c, "创建服务器机器失败："+err.Error())
 		return
@@ -66,10 +67,8 @@ func (h *ServerMachineHandler) GetServerMachine(c *gin.Context) {
 // UpdateServerMachineRequest 更新服务器机器请求
 type UpdateServerMachineRequest struct {
 	Name     string `json:"name" binding:"required"`
-	Host     string `json:"host" binding:"required"`
-	Port     int    `json:"port" binding:"required"`
-	Protocol string `json:"protocol"`
-	Status   int    `json:"status"`
+	Notes    string `json:"notes"`
+	IsActive bool   `json:"is_active"`
 }
 
 // UpdateServerMachine 更新服务器机器（管理员）
@@ -87,7 +86,7 @@ func (h *ServerMachineHandler) UpdateServerMachine(c *gin.Context) {
 		return
 	}
 
-	machine, err := h.machineService.Update(uint(id), req.Name, req.Host, req.Port, req.Protocol, req.Status)
+	machine, err := h.machineService.Update(uint(id), req.Name, req.IsActive, req.Notes)
 	if err != nil {
 		response.InternalError(c, "更新服务器机器失败："+err.Error())
 		return
@@ -134,8 +133,49 @@ func (h *ServerMachineHandler) ListServerMachines(c *gin.Context) {
 		return
 	}
 
+	// 批量查询每台机器下的节点数
+	db := database.Get()
+	type nodeCountResult struct {
+		MachineID uint  `gorm:"column:machine_id"`
+		Count     int64 `gorm:"column:count"`
+	}
+	var counts []nodeCountResult
+	machineIDs := make([]uint, 0, len(machines))
+	for _, m := range machines {
+		machineIDs = append(machineIDs, m.ID)
+	}
+	if len(machineIDs) > 0 {
+		db.Model(&model.Node{}).
+			Select("machine_id, COUNT(*) as count").
+			Where("machine_id IN ?", machineIDs).
+			Group("machine_id").
+			Find(&counts)
+	}
+	countMap := make(map[uint]int64)
+	for _, c := range counts {
+		countMap[c.MachineID] = c.Count
+	}
+
+	list := make([]gin.H, 0, len(machines))
+	for _, m := range machines {
+		list = append(list, gin.H{
+			"id":           m.ID,
+			"name":         m.Name,
+			"notes":        m.Notes,
+			"is_active":    m.IsActive,
+			"last_seen_at": m.LastSeenAt,
+			"load_status":  m.LoadStatus,
+			"cpu":          m.CPU,
+			"memory":       m.Memory,
+			"disk":         m.Disk,
+			"node_count":   countMap[m.ID],
+			"created_at":   m.CreatedAt,
+			"updated_at":   m.UpdatedAt,
+		})
+	}
+
 	response.Success(c, gin.H{
-		"list":  machines,
+		"list":  list,
 		"total": total,
 		"page":  page,
 		"page_size": pageSize,
@@ -155,7 +195,7 @@ func (h *ServerMachineHandler) ListAllServerMachines(c *gin.Context) {
 
 // UpdateServerMachineStatusRequest 更新服务器机器状态请求
 type UpdateServerMachineStatusRequest struct {
-	Status int `json:"status"`
+	IsActive bool `json:"is_active"`
 }
 
 // UpdateServerMachineStatus 更新服务器机器状态（管理员）
@@ -173,7 +213,7 @@ func (h *ServerMachineHandler) UpdateServerMachineStatus(c *gin.Context) {
 		return
 	}
 
-	if err := h.machineService.UpdateStatus(uint(id), req.Status); err != nil {
+	if err := h.machineService.UpdateStatus(uint(id), req.IsActive); err != nil {
 		response.InternalError(c, "更新服务器机器状态失败："+err.Error())
 		return
 	}
@@ -241,13 +281,91 @@ func (h *ServerMachineHandler) GetInstallCommand(c *gin.Context) {
 		return
 	}
 
-	cmd, err := h.machineService.GetInstallCommand(uint(id))
+	scheme := "http"
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	host := c.GetHeader("X-Forwarded-Host")
+	if host == "" {
+		host = c.Request.Host
+	}
+	panelURL := fmt.Sprintf("%s://%s", scheme, host)
+
+	cmd, err := h.machineService.GetInstallCommand(uint(id), panelURL)
 	if err != nil {
 		response.InternalError(c, "获取安装命令失败："+err.Error())
 		return
 	}
 
 	response.Success(c, gin.H{
-		"install_command": cmd,
+		"command": cmd,
+	})
+}
+
+// GetMachineNodes 获取机器下的节点列表（管理员）
+func (h *ServerMachineHandler) GetMachineNodes(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的机器ID")
+		return
+	}
+
+	db := database.Get()
+	var nodes []model.Node
+	if err := db.Where("machine_id = ?", id).Order("sort ASC, id ASC").Find(&nodes).Error; err != nil {
+		response.InternalError(c, "获取节点列表失败")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"list":       nodes,
+		"node_count": len(nodes),
+	})
+}
+
+// GetLoadHistory 获取机器负载历史（管理员）
+func (h *ServerMachineHandler) GetLoadHistory(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的机器ID")
+		return
+	}
+
+	pageStr := c.DefaultQuery("page", "1")
+	pageSizeStr := c.DefaultQuery("page_size", "50")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil || pageSize < 1 || pageSize > 500 {
+		pageSize = 50
+	}
+
+	db := database.Get()
+	var histories []model.ServerMachineLoadHistory
+	var total int64
+
+	query := db.Model(&model.ServerMachineLoadHistory{}).Where("machine_id = ?", id)
+	if err := query.Count(&total).Error; err != nil {
+		response.InternalError(c, "获取负载历史失败")
+		return
+	}
+
+	offset := (page - 1) * pageSize
+	if err := query.Offset(offset).Limit(pageSize).Order("recorded_at DESC").Find(&histories).Error; err != nil {
+		response.InternalError(c, "获取负载历史失败")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"list":      histories,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }

@@ -145,7 +145,7 @@ func (s *nodeServiceServer) Handshake(ctx context.Context, req *HandshakeRequest
 		machineRepo := repository.NewServerMachineRepository()
 		machine, err := machineRepo.GetByID(uint(req.MachineID))
 		if err == nil && machine != nil {
-			if err := machineRepo.UpdateStatus(uint(req.MachineID), 1); err != nil {
+			if err := machineRepo.UpdateStatus(uint(req.MachineID), true); err != nil {
 				logger.Sugar().Warnf("gRPC Handshake: failed to mark machine %d online: %v", req.MachineID, err)
 			} else {
 				logger.Sugar().Infof("gRPC Handshake: marked machine %d online", req.MachineID)
@@ -355,10 +355,14 @@ func (s *nodeServiceServer) handleStatusReport(ctx context.Context, nodeID uint3
 			if report.DiskTotal > 0 {
 				diskPercent = float64(report.DiskUsed) / float64(report.DiskTotal) * 100
 			}
-			machineRepo := repository.NewServerMachineRepository()
-			if err := machineRepo.UpdateMachineStatus(machineID, cpuPercent, memPercent, diskPercent, int64(report.Uptime)); err != nil {
-				logger.Sugar().Warnf("gRPC StatusReport: failed to update machine %d: %v", machineID, err)
-			}
+			db := database.Get()
+			db.Model(&model.ServerMachine{}).Where("id = ?", machineID).Updates(map[string]interface{}{
+				"cpu":          cpuPercent,
+				"memory":       memPercent,
+				"disk":         diskPercent,
+				"is_active":    true,
+				"last_seen_at": time.Now().Unix(),
+			})
 		}
 	}
 }
@@ -453,15 +457,19 @@ func GetActiveUsersForBroadcast() ([]*User, error) {
 
 // buildNodeConfig converts a model.Node to a proto-style NodeConfig.
 func buildNodeConfig(node *model.Node) *NodeConfig {
+	groupIDs := make([]uint32, 0, len(node.GetGroupIDList()))
+	for _, id := range node.GetGroupIDList() {
+		groupIDs = append(groupIDs, uint32(id))
+	}
 	return &NodeConfig{
 		ID:         uint32(node.ID),
 		Name:       node.Name,
 		Protocol:   node.Type,
-		Address:    node.Address,
+		Address:    node.Host,
 		Port:       int32(node.Port),
 		ServerInfo: node.ServerInfo,
 		Rate:       float32(node.Rate),
-		GroupID:    uint32(node.GroupID),
+		GroupIDs:   groupIDs,
 		ParentID:   uint32(node.ParentID),
 	}
 }

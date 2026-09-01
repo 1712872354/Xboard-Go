@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"xboard-go/internal/model"
 	"xboard-go/internal/repository"
@@ -11,10 +12,10 @@ import (
 
 // NodeService 节点服务接口
 type NodeService interface {
-	CreateNode(name, nodeType, address string, port int, serverInfo string, groupID uint, rate float64, parentID uint) (*model.Node, error)
+	CreateNode(name, nodeType, host string, port int, serverInfo string, groupIDs []uint, rate float64, parentID uint) (*model.Node, error)
 	CreateNodeEx(req CreateNodeRequest) (*model.Node, error)
 	GetNodeByID(id uint) (*model.Node, error)
-	UpdateNode(id uint, name, nodeType, address string, port int, serverInfo string, groupID uint, rate float64, status int, parentID uint) (*model.Node, error)
+	UpdateNode(id uint, name, nodeType, host string, port int, serverInfo string, groupIDs []uint, rate float64, status int, parentID uint) (*model.Node, error)
 	UpdateNodeEx(id uint, req UpdateNodeRequest) (*model.Node, error)
 	DeleteNode(id uint) error
 	ListNodes(page, pageSize int, groupID uint) ([]model.Node, int64, error)
@@ -22,25 +23,35 @@ type NodeService interface {
 	UpdateNodeStatus(id uint, status int) error
 	BatchUpdateStatus(ids []uint, status int) error
 	BatchDelete(ids []uint) error
-	BatchMoveGroup(ids []uint, groupID uint) error
+	BatchMoveGroup(ids []uint, groupIDs []uint) error
 	// 复制节点
 	CopyNode(id uint) (*model.Node, error)
 	// 更新节点排序
 	UpdateNodeSort(id uint, sort int) error
+	// 批量排序
+	SortNodes(items []SortItem) error
+	// 批量更新节点属性
+	BatchUpdateNodes(ids []uint, show *int, enabled *bool, machineID *uint) error
 	// 重置节点流量
 	ResetNodeTraffic(id uint) error
 	// 批量重置节点流量
 	BatchResetNodeTraffic(ids []uint) error
 }
 
+// SortItem 排序项
+type SortItem struct {
+	ID    uint
+	Order int
+}
+
 // CreateNodeRequest 创建节点请求结构
 type CreateNodeRequest struct {
 	Name                string  `json:"name"`
 	Type                string  `json:"type"`
-	Address             string  `json:"address"`
+	Host                string  `json:"host"`
 	Port                int     `json:"port"`
 	ServerInfo          string  `json:"server_info"`
-	GroupID             uint    `json:"group_id"`
+	GroupIDs            []uint  `json:"group_ids"`
 	Rate                float64 `json:"rate"`
 	ParentID            uint    `json:"parent_id"`
 	Sort                int     `json:"sort"`
@@ -56,10 +67,10 @@ type CreateNodeRequest struct {
 type UpdateNodeRequest struct {
 	Name                string  `json:"name"`
 	Type                string  `json:"type"`
-	Address             string  `json:"address"`
+	Host                string  `json:"host"`
 	Port                int     `json:"port"`
 	ServerInfo          string  `json:"server_info"`
-	GroupID             uint    `json:"group_id"`
+	GroupIDs            []uint  `json:"group_ids"`
 	Rate                float64 `json:"rate"`
 	Status              int     `json:"status"`
 	ParentID            uint    `json:"parent_id"`
@@ -84,15 +95,15 @@ func NewNodeService(nodeRepo repository.NodeRepository) NodeService {
 }
 
 // CreateNode 创建节点
-func (s *nodeService) CreateNode(name, nodeType, address string, port int, serverInfo string, groupID uint, rate float64, parentID uint) (*model.Node, error) {
+func (s *nodeService) CreateNode(name, nodeType, host string, port int, serverInfo string, groupIDs []uint, rate float64, parentID uint) (*model.Node, error) {
 	if name == "" {
 		return nil, errors.New("node name is required")
 	}
 	if nodeType == "" {
 		return nil, errors.New("node type is required")
 	}
-	if address == "" {
-		return nil, errors.New("node address is required")
+	if host == "" {
+		return nil, errors.New("node host is required")
 	}
 	if port <= 0 || port > 65535 {
 		return nil, errors.New("invalid port number")
@@ -132,14 +143,14 @@ func (s *nodeService) CreateNode(name, nodeType, address string, port int, serve
 	node := &model.Node{
 		Name:       name,
 		Type:       nodeType,
-		Address:    address,
+		Host:       host,
 		Port:       port,
 		ServerInfo: serverInfo,
-		GroupID:    groupID,
 		Rate:       rate,
 		Status:     1,
 		ParentID:   parentID,
 	}
+	node.SetGroupIDs(groupIDs)
 
 	if err := s.nodeRepo.Create(node); err != nil {
 		return nil, fmt.Errorf("failed to create node: %w", err)
@@ -161,7 +172,7 @@ func (s *nodeService) GetNodeByID(id uint) (*model.Node, error) {
 }
 
 // UpdateNode 更新节点
-func (s *nodeService) UpdateNode(id uint, name, nodeType, address string, port int, serverInfo string, groupID uint, rate float64, status int, parentID uint) (*model.Node, error) {
+func (s *nodeService) UpdateNode(id uint, name, nodeType, host string, port int, serverInfo string, groupIDs []uint, rate float64, status int, parentID uint) (*model.Node, error) {
 	node, err := s.nodeRepo.GetByID(id)
 	if err != nil {
 		return nil, err
@@ -176,8 +187,8 @@ func (s *nodeService) UpdateNode(id uint, name, nodeType, address string, port i
 	if nodeType != "" {
 		node.Type = nodeType
 	}
-	if address != "" {
-		node.Address = address
+	if host != "" {
+		node.Host = host
 	}
 	if port > 0 && port <= 65535 {
 		node.Port = port
@@ -190,8 +201,8 @@ func (s *nodeService) UpdateNode(id uint, name, nodeType, address string, port i
 		}
 		node.ServerInfo = serverInfo
 	}
-	if groupID > 0 {
-		node.GroupID = groupID
+	if groupIDs != nil {
+		node.SetGroupIDs(groupIDs)
 	}
 	if rate > 0 {
 		node.Rate = rate
@@ -218,8 +229,8 @@ func (s *nodeService) CreateNodeEx(req CreateNodeRequest) (*model.Node, error) {
 	if req.Type == "" {
 		return nil, errors.New("node type is required")
 	}
-	if req.Address == "" {
-		return nil, errors.New("node address is required")
+	if req.Host == "" {
+		return nil, errors.New("node host is required")
 	}
 	if req.Port <= 0 || req.Port > 65535 {
 		return nil, errors.New("invalid port number")
@@ -253,10 +264,9 @@ func (s *nodeService) CreateNodeEx(req CreateNodeRequest) (*model.Node, error) {
 	node := &model.Node{
 		Name:                req.Name,
 		Type:                req.Type,
-		Address:             req.Address,
+		Host:                req.Host,
 		Port:                req.Port,
 		ServerInfo:          req.ServerInfo,
-		GroupID:             req.GroupID,
 		Rate:                req.Rate,
 		Status:              1,
 		ParentID:            req.ParentID,
@@ -268,6 +278,7 @@ func (s *nodeService) CreateNodeEx(req CreateNodeRequest) (*model.Node, error) {
 		HealthCheckTimeout:  req.HealthCheckTimeout,
 		HealthCheckType:     req.HealthCheckType,
 	}
+	node.SetGroupIDs(req.GroupIDs)
 
 	if node.HealthCheckType == "" {
 		node.HealthCheckType = "tcp"
@@ -295,8 +306,8 @@ func (s *nodeService) UpdateNodeEx(id uint, req UpdateNodeRequest) (*model.Node,
 	if req.Type != "" {
 		node.Type = req.Type
 	}
-	if req.Address != "" {
-		node.Address = req.Address
+	if req.Host != "" {
+		node.Host = req.Host
 	}
 	if req.Port > 0 && req.Port <= 65535 {
 		node.Port = req.Port
@@ -403,11 +414,16 @@ func (s *nodeService) BatchDelete(ids []uint) error {
 }
 
 // BatchMoveGroup 批量移动节点分组
-func (s *nodeService) BatchMoveGroup(ids []uint, groupID uint) error {
+func (s *nodeService) BatchMoveGroup(ids []uint, groupIDs []uint) error {
 	if len(ids) == 0 {
 		return errors.New("no node IDs provided")
 	}
-	return s.nodeRepo.BatchMoveGroup(ids, groupID)
+	// 构造逗号分隔的 group_ids 字符串
+	strs := make([]string, len(groupIDs))
+	for i, id := range groupIDs {
+		strs[i] = fmt.Sprintf("%d", id)
+	}
+	return s.nodeRepo.BatchMoveGroup(ids, strings.Join(strs, ","))
 }
 
 // CopyNode 复制节点
@@ -420,21 +436,34 @@ func (s *nodeService) CopyNode(id uint) (*model.Node, error) {
 		return nil, errors.New("node not found")
 	}
 
-	// 创建节点副本
+	// 创建节点副本 — 原版Xboard: show=0, code="", 流量清零
 	newNode := &model.Node{
 		Name:                node.Name + " (副本)",
 		Type:                node.Type,
-		Address:             node.Address,
+		Host:                node.Host,
 		Port:                node.Port,
+		ServerPort:          node.ServerPort,
+		Code:                "", // 副本不复制code
 		ServerInfo:          node.ServerInfo,
-		GroupID:             node.GroupID,
+		GroupIDs:            node.GroupIDs,
 		Rate:                node.Rate,
-		Status:              0, // 新节点默认离线
+		Status:              0,
 		ParentID:            node.ParentID,
+		Show:                0, // 副本默认隐藏
+		Tags:                node.Tags,
 		HealthCheckPort:     node.HealthCheckPort,
 		HealthCheckInterval: node.HealthCheckInterval,
 		HealthCheckTimeout:  node.HealthCheckTimeout,
 		HealthCheckType:     node.HealthCheckType,
+		UploadTraffic:       0,
+		DownloadTraffic:     0,
+		TransferEnable:      node.TransferEnable,
+		RateTimeEnable:      node.RateTimeEnable,
+		RateTimeRanges:      node.RateTimeRanges,
+		CustomOutbounds:     node.CustomOutbounds,
+		CustomRoutes:        node.CustomRoutes,
+		CertConfig:          node.CertConfig,
+		Ports:               node.Ports,
 	}
 
 	if err := s.nodeRepo.Create(newNode); err != nil {
@@ -477,4 +506,24 @@ func (s *nodeService) BatchResetNodeTraffic(ids []uint) error {
 	}
 
 	return s.nodeRepo.BatchResetTraffic(ids)
+}
+
+// SortNodes 批量排序节点
+func (s *nodeService) SortNodes(items []SortItem) error {
+	if len(items) == 0 {
+		return errors.New("no sort items provided")
+	}
+	repoItems := make([]repository.BatchSortItem, len(items))
+	for i, item := range items {
+		repoItems[i] = repository.BatchSortItem{ID: item.ID, Order: item.Order}
+	}
+	return s.nodeRepo.BatchSort(repoItems)
+}
+
+// BatchUpdateNodes 批量更新节点属性（show/enabled/machine_id）
+func (s *nodeService) BatchUpdateNodes(ids []uint, show *int, enabled *bool, machineID *uint) error {
+	if len(ids) == 0 {
+		return errors.New("no node IDs provided")
+	}
+	return s.nodeRepo.BatchUpdateFields(ids, show, enabled, machineID)
 }

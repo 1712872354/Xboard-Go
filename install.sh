@@ -20,6 +20,7 @@ DEFAULT_PORT=8080
 DEFAULT_GRPC_PORT=50051
 INSTALL_DIR="/opt/xboard-go"
 DATA_DIR="${INSTALL_DIR}/data"
+CONFIG_PATH="${DATA_DIR}/config.yaml"
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
@@ -56,30 +57,131 @@ get_current_version() {
 }
 
 # ═══════════════════════════════════════════════════════════════
+# 配置迁移：检查并补充缺失的配置项
+# ═══════════════════════════════════════════════════════════════
+
+migrate_config() {
+    local cfg="${CONFIG_PATH}"
+    local changed=false
+
+    if [[ ! -f "$cfg" ]]; then
+        return
+    fi
+
+    log_step "检查配置文件完整性..."
+
+    # 检查 jwt 段
+    if ! grep -q "^jwt:" "$cfg"; then
+        log_warn "缺少 jwt 配置段，正在添加..."
+        local jwt_secret=$(grep -oP 'key: \K.*' "$cfg" 2>/dev/null | head -1)
+        if [[ -z "$jwt_secret" ]]; then
+            jwt_secret=$(generate_random_string)
+        fi
+        cat >> "$cfg" << EOF
+
+jwt:
+  secret: "${jwt_secret}"
+  access_token_ttl: 7200
+  refresh_token_ttl: 604800
+EOF
+        changed=true
+        log_info "已添加 jwt 配置 (access_token_ttl=7200, refresh_token_ttl=604800)"
+    else
+        # 检查 access_token_ttl 是否为 0 或缺失
+        local ttl=$(grep -oP 'access_token_ttl: \K\d+' "$cfg" 2>/dev/null)
+        if [[ -z "$ttl" || "$ttl" == "0" ]]; then
+            log_warn "jwt.access_token_ttl 为 $ttl，修正为 7200..."
+            sed -i 's/access_token_ttl:.*/access_token_ttl: 7200/' "$cfg"
+            changed=true
+        fi
+        # 检查 secret 是否为空
+        local secret=$(grep -oP 'secret: \K.*' "$cfg" 2>/dev/null | head -1 | tr -d '"' | tr -d "'")
+        if [[ -z "$secret" ]]; then
+            local new_secret=$(generate_random_string)
+            sed -i "s/secret:.*/secret: \"${new_secret}\"/" "$cfg"
+            changed=true
+            log_info "已生成新的 jwt.secret"
+        fi
+    fi
+
+    # 检查 log 段（修正 logger → log）
+    if grep -q "^logger:" "$cfg"; then
+        log_warn "发现 'logger:' 配置段，修正为 'log:'..."
+        sed -i 's/^logger:/log:/' "$cfg"
+        changed=true
+    fi
+    if ! grep -q "^log:" "$cfg"; then
+        log_warn "缺少 log 配置段，正在添加..."
+        cat >> "$cfg" << EOF
+
+log:
+  level: info
+  format: json
+  output: stdout
+EOF
+        changed=true
+    fi
+
+    # 检查 redis 段
+    if ! grep -q "^redis:" "$cfg"; then
+        log_warn "缺少 redis 配置段，正在添加..."
+        cat >> "$cfg" << EOF
+
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 100
+EOF
+        changed=true
+    fi
+
+    # 检查 rate_limit 段
+    if ! grep -q "^rate_limit:" "$cfg"; then
+        log_warn "缺少 rate_limit 配置段，正在添加..."
+        cat >> "$cfg" << EOF
+
+rate_limit:
+  enabled: true
+  ip_limit: 100
+  user_limit: 300
+  ip_whitelist:
+    - "127.0.0.1"
+    - "::1"
+  path_whitelist:
+    - "/healthz"
+EOF
+        changed=true
+    fi
+
+    if $changed; then
+        log_info "配置迁移完成"
+    else
+        log_info "配置文件完整，无需迁移"
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════
 # 更新功能
 # ═══════════════════════════════════════════════════════════════
 
 update_docker() {
     log_step "更新 Docker 部署..."
 
-    # 备份当前镜像
     log_info "备份当前镜像..."
     docker tag ${DOCKER_IMAGE} ${DOCKER_IMAGE}:backup 2>/dev/null || true
 
-    # 拉取新镜像
     log_info "拉取最新镜像..."
     docker pull ${DOCKER_IMAGE}
 
-    # 停止并删除旧容器
     log_info "停止旧容器..."
     docker stop xboard-go 2>/dev/null || true
     docker rm xboard-go 2>/dev/null || true
 
-    # 读取配置中的端口
-    local http_port=$(grep -oP 'port: \K\d+' ${DATA_DIR}/config.yaml 2>/dev/null || echo "8080")
-    local grpc_port=$(grep -oP 'grpc:.*port: \K\d+' ${DATA_DIR}/config.yaml 2>/dev/null || echo "50051")
+    local http_port=$(grep -oP 'port: \K\d+' ${CONFIG_PATH} 2>/dev/null | head -1 || echo "8080")
+    local grpc_port=$(grep -oP 'grpc:.*port: \K\d+' ${CONFIG_PATH} 2>/dev/null || echo "50051")
 
-    # 启动新容器
     log_info "启动新容器..."
     docker run -d \
         --name xboard-go \
@@ -95,22 +197,24 @@ update_docker() {
 update_binary() {
     log_step "更新二进制部署..."
 
+    # 迁移配置文件
+    migrate_config
+
     # 备份当前版本
     if [[ -f "${INSTALL_DIR}/xboard-go" ]]; then
         log_info "备份当前版本..."
         cp "${INSTALL_DIR}/xboard-go" "${INSTALL_DIR}/xboard-go.bak"
     fi
 
-    # 先停止服务（避免 Text file busy 错误）
+    # 停止服务
     log_info "停止当前服务..."
     systemctl stop xboard-go 2>/dev/null || true
     sleep 1
-    # 强制杀死所有相关进程
     killall xboard-go 2>/dev/null || true
     pkill -9 -f "xboard-go" 2>/dev/null || true
     sleep 2
 
-    # 检测系统架构
+    # 检测架构
     local arch=$(uname -m)
     case $arch in
         x86_64|amd64) arch="amd64" ;;
@@ -118,7 +222,7 @@ update_binary() {
         *) log_error "不支持的架构: $arch"; exit 1 ;;
     esac
 
-    # 先下载到临时文件，再替换（避免 Text file busy）
+    # 下载到临时文件
     local binary_url="${RELEASE_URL}/xboard-go-linux-${arch}"
     local tmp_file="${INSTALL_DIR}/xboard-go.new"
     log_info "下载: ${binary_url}"
@@ -132,18 +236,36 @@ update_binary() {
         exit 1
     fi
 
-    # 替换二进制文件
+    # 替换二进制
     mv "${tmp_file}" "${INSTALL_DIR}/xboard-go"
     chmod +x "${INSTALL_DIR}/xboard-go"
 
     # 启动服务
     log_info "启动服务..."
     systemctl start xboard-go 2>/dev/null || {
-        nohup ${INSTALL_DIR}/xboard-go -config ${DATA_DIR}/config.yaml > ${DATA_DIR}/xboard-go.log 2>&1 &
+        log_warn "systemd 启动失败，使用 nohup..."
+        nohup ${INSTALL_DIR}/xboard-go -config ${CONFIG_PATH} > ${DATA_DIR}/xboard-go.log 2>&1 &
         echo $! > ${DATA_DIR}/xboard-go.pid
     }
 
+    # 健康检查
+    health_check
+
     log_info "二进制更新完成"
+}
+
+health_check() {
+    local http_port=$(grep -oP 'port: \K\d+' ${CONFIG_PATH} 2>/dev/null | head -1 || echo "8080")
+    log_info "健康检查..."
+    for i in $(seq 1 15); do
+        if curl -s "http://localhost:${http_port}/healthz" > /dev/null 2>&1; then
+            log_info "服务运行正常"
+            return 0
+        fi
+        sleep 1
+    done
+    log_error "健康检查失败，请检查日志: journalctl -u xboard-go -f"
+    return 1
 }
 
 # 回滚
@@ -158,7 +280,9 @@ rollback() {
     elif [[ -f "${INSTALL_DIR}/xboard-go.bak" ]]; then
         systemctl stop xboard-go 2>/dev/null || true
         cp "${INSTALL_DIR}/xboard-go.bak" "${INSTALL_DIR}/xboard-go"
+        chmod +x "${INSTALL_DIR}/xboard-go"
         systemctl start xboard-go 2>/dev/null || true
+        health_check
         log_info "回滚完成"
     else
         log_error "没有找到备份版本"
@@ -203,7 +327,7 @@ deploy_docker() {
 
 deploy_binary() {
     log_step "二进制部署..."
-    mkdir -p "${INSTALL_DIR}"
+    mkdir -p "${INSTALL_DIR}" "${DATA_DIR}"
 
     local arch=$(uname -m)
     case $arch in
@@ -226,8 +350,10 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${INSTALL_DIR}/xboard-go -config ${DATA_DIR}/config.yaml
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=${INSTALL_DIR}/xboard-go -config ${CONFIG_PATH}
 Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
@@ -243,15 +369,51 @@ generate_config() {
     log_step "生成配置文件..."
     mkdir -p "${DATA_DIR}"
 
-    cat > "${DATA_DIR}/config.yaml" << EOF
+    # 构建数据库配置段
+    local db_section=""
+    case $DB_DRIVER in
+        sqlite)
+            db_section="  driver: sqlite
+  dbname: ${DATA_DIR}/xboard.db"
+            ;;
+        mysql)
+            db_section="  driver: mysql
+  host: ${DB_HOST}
+  port: ${DB_PORT}
+  user: ${DB_USER}
+  password: \"${DB_PASS}\"
+  dbname: ${DB_NAME}
+  max_idle_conns: 10
+  max_open_conns: 100"
+            ;;
+        postgres)
+            db_section="  driver: postgres
+  host: ${DB_HOST}
+  port: ${DB_PORT}
+  user: ${DB_USER}
+  password: \"${DB_PASS}\"
+  dbname: ${DB_NAME}
+  sslmode: disable
+  max_idle_conns: 10
+  max_open_conns: 100"
+            ;;
+    esac
+
+    cat > "${CONFIG_PATH}" << EOF
 server:
   host: "0.0.0.0"
   port: ${HTTP_PORT}
   mode: release
 
 database:
-  driver: ${DB_DRIVER}
-$(echo -e "${DB_CONFIG}")
+${db_section}
+
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 100
 
 grpc:
   enabled: true
@@ -259,21 +421,31 @@ grpc:
 
 app:
   name: ${SITE_NAME}
-  key: ${APP_KEY}
   node_api_key: ${NODE_API_KEY}
   default_user_role: user
 
 jwt:
-  secret: ${APP_KEY}
-  access_token_ttl: 3600
+  secret: "${APP_KEY}"
+  access_token_ttl: 7200
   refresh_token_ttl: 604800
 
-logger:
+log:
   level: info
   format: json
+  output: stdout
+
+rate_limit:
+  enabled: true
+  ip_limit: 100
+  user_limit: 300
+  ip_whitelist:
+    - "127.0.0.1"
+    - "::1"
+  path_whitelist:
+    - "/healthz"
 EOF
 
-    log_info "配置已生成: ${DATA_DIR}/config.yaml"
+    log_info "配置已生成: ${CONFIG_PATH}"
 }
 
 init_admin() {
@@ -287,14 +459,36 @@ init_admin() {
         sleep 1
     done
 
+    # 注册管理员账户
+    log_info "创建管理员账户..."
     curl -s -X POST "http://localhost:${HTTP_PORT}/api/v1/auth/register" \
         -H "Content-Type: application/json" \
         -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASS}\"}" > /dev/null 2>&1 || true
 
-    log_warn "请手动设置管理员角色:"
-    if [[ "$DB_DRIVER" == "sqlite" ]]; then
-        echo "  sqlite3 ${DATA_DIR}/xboard.db \"UPDATE users SET role='admin' WHERE email='${ADMIN_EMAIL}';\""
-    fi
+    # 自动设置管理员角色
+    log_info "设置管理员角色..."
+    sleep 1
+    case $DB_DRIVER in
+        sqlite)
+            if command -v sqlite3 &> /dev/null; then
+                sqlite3 "${DATA_DIR}/xboard.db" "UPDATE users SET role='admin' WHERE email='${ADMIN_EMAIL}';" 2>/dev/null
+                log_info "管理员角色已设置 (SQLite)"
+            else
+                log_warn "sqlite3 未安装，请手动执行:"
+                echo "  sqlite3 ${DATA_DIR}/xboard.db \"UPDATE users SET role='admin' WHERE email='${ADMIN_EMAIL}';\""
+            fi
+            ;;
+        mysql)
+            mysql -u "${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" \
+                -e "UPDATE users SET role='admin' WHERE email='${ADMIN_EMAIL}';" 2>/dev/null
+            log_info "管理员角色已设置 (MySQL)"
+            ;;
+        postgres)
+            PGPASSWORD="${DB_PASS}" psql -U "${DB_USER}" -d "${DB_NAME}" \
+                -c "UPDATE users SET role='admin' WHERE email='${ADMIN_EMAIL}';" 2>/dev/null
+            log_info "管理员角色已设置 (PostgreSQL)"
+            ;;
+    esac
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -458,7 +652,6 @@ collect_install_config() {
     case $DB_TYPE in
         1)
             DB_DRIVER="sqlite"
-            DB_CONFIG="  dbname: ${DATA_DIR}/xboard.db"
             ;;
         2)
             DB_DRIVER="mysql"
@@ -467,7 +660,6 @@ collect_install_config() {
             read -p "MySQL 数据库 [xboard]: " DB_NAME < /dev/tty; DB_NAME=${DB_NAME:-xboard}
             read -p "MySQL 用户 [root]: " DB_USER < /dev/tty; DB_USER=${DB_USER:-root}
             read -sp "MySQL 密码: " DB_PASS < /dev/tty; echo ""
-            DB_CONFIG="  host: ${DB_HOST}\n  port: ${DB_PORT}\n  user: ${DB_USER}\n  password: \"${DB_PASS}\"\n  dbname: ${DB_NAME}"
             ;;
         3)
             DB_DRIVER="postgres"
@@ -476,7 +668,6 @@ collect_install_config() {
             read -p "PostgreSQL 数据库 [xboard]: " DB_NAME < /dev/tty; DB_NAME=${DB_NAME:-xboard}
             read -p "PostgreSQL 用户 [postgres]: " DB_USER < /dev/tty; DB_USER=${DB_USER:-postgres}
             read -sp "PostgreSQL 密码: " DB_PASS < /dev/tty; echo ""
-            DB_CONFIG="  host: ${DB_HOST}\n  port: ${DB_PORT}\n  user: ${DB_USER}\n  password: \"${DB_PASS}\"\n  dbname: ${DB_NAME}\n  sslmode: disable"
             ;;
     esac
 
@@ -507,7 +698,7 @@ collect_install_config() {
 show_install_result() {
     echo ""
     echo -e "${GREEN}═══════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}  ✅ 部署完成！${NC}"
+    echo -e "${GREEN}  部署完成！${NC}"
     echo -e "${GREEN}═══════════════════════════════════════════════════${NC}"
     echo ""
     echo "  访问地址:"
@@ -518,7 +709,7 @@ show_install_result() {
     echo "    邮箱: ${ADMIN_EMAIL}"
     echo "    密码: ${ADMIN_PASS}"
     echo ""
-    echo "  配置文件: ${DATA_DIR}/config.yaml"
+    echo "  配置文件: ${CONFIG_PATH}"
     echo "  节点密钥: ${NODE_API_KEY}"
     echo ""
 }

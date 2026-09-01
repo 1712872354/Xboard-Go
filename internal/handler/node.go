@@ -12,8 +12,8 @@ import (
 // NotifyNodeConfigChange is called after a node is updated via the admin API.
 // It is set by cmd/server/main.go to bridge the HTTP handler to the gRPC
 // broadcaster, avoiding a circular import between handler and grpc packages.
-// Parameters: nodeID (uint), name, typ, address (string), port (int), serverInfo (string), rate (float64), groupID, parentID (uint)
-var NotifyNodeConfigChange func(nodeID uint, name, typ, address string, port int, serverInfo string, rate float64, groupID, parentID uint)
+// Parameters: nodeID (uint), name, typ, host (string), port (int), serverInfo (string), rate (float64), groupIDs ([]uint), parentID (uint)
+var NotifyNodeConfigChange func(nodeID uint, name, typ, host string, port int, serverInfo string, rate float64, groupIDs []uint, parentID uint)
 
 // NodeHandler 节点处理器
 type NodeHandler struct {
@@ -31,10 +31,10 @@ func NewNodeHandler(nodeService service.NodeService) *NodeHandler {
 type CreateNodeRequest struct {
 	Name                string  `json:"name" binding:"required"`
 	Type                string  `json:"type" binding:"required"`
-	Address             string  `json:"address" binding:"required"`
+	Host                string  `json:"host" binding:"required"`
 	Port                int     `json:"port" binding:"required,min=1,max=65535"`
 	ServerInfo          string  `json:"server_info"`
-	GroupID             uint    `json:"group_id"`
+	GroupIDs            []uint  `json:"group_ids"`
 	Rate                float64 `json:"rate"`
 	ParentID            uint    `json:"parent_id"`
 	Sort                int     `json:"sort"`
@@ -71,10 +71,10 @@ func (h *NodeHandler) CreateNode(c *gin.Context) {
 	node, err := h.nodeService.CreateNodeEx(service.CreateNodeRequest{
 		Name:                req.Name,
 		Type:                req.Type,
-		Address:             req.Address,
+		Host:                req.Host,
 		Port:                req.Port,
 		ServerInfo:          req.ServerInfo,
-		GroupID:             req.GroupID,
+		GroupIDs:            req.GroupIDs,
 		Rate:                req.Rate,
 		ParentID:            req.ParentID,
 		Sort:                req.Sort,
@@ -123,10 +123,10 @@ func (h *NodeHandler) GetNode(c *gin.Context) {
 type UpdateNodeRequest struct {
 	Name                string  `json:"name"`
 	Type                string  `json:"type"`
-	Address             string  `json:"address"`
+	Host                string  `json:"host"`
 	Port                int     `json:"port"`
 	ServerInfo          string  `json:"server_info"`
-	GroupID             uint    `json:"group_id"`
+	GroupIDs            []uint  `json:"group_ids"`
 	Rate                float64 `json:"rate"`
 	Status              int     `json:"status"`
 	ParentID            uint    `json:"parent_id"`
@@ -167,10 +167,10 @@ func (h *NodeHandler) UpdateNode(c *gin.Context) {
 	node, err := h.nodeService.UpdateNodeEx(uint(id), service.UpdateNodeRequest{
 		Name:                req.Name,
 		Type:                req.Type,
-		Address:             req.Address,
+		Host:                req.Host,
 		Port:                req.Port,
 		ServerInfo:          req.ServerInfo,
-		GroupID:             req.GroupID,
+		GroupIDs:            req.GroupIDs,
 		Rate:                req.Rate,
 		Status:              req.Status,
 		ParentID:            req.ParentID,
@@ -189,7 +189,7 @@ func (h *NodeHandler) UpdateNode(c *gin.Context) {
 
 	// Push config update to connected gRPC nodes.
 	if NotifyNodeConfigChange != nil {
-		go NotifyNodeConfigChange(uint(id), node.Name, node.Type, node.Address, node.Port, node.ServerInfo, node.Rate, node.GroupID, node.ParentID)
+		go NotifyNodeConfigChange(uint(id), node.Name, node.Type, node.Host, node.Port, node.ServerInfo, node.Rate, node.GetGroupIDList(), node.ParentID)
 	}
 
 	response.Success(c, node)
@@ -289,7 +289,7 @@ func (h *NodeHandler) UpdateNodeStatus(c *gin.Context) {
 	if NotifyNodeConfigChange != nil {
 		node, err := h.nodeService.GetNodeByID(uint(id))
 		if err == nil && node != nil {
-			go NotifyNodeConfigChange(uint(id), node.Name, node.Type, node.Address, node.Port, node.ServerInfo, node.Rate, node.GroupID, node.ParentID)
+			go NotifyNodeConfigChange(uint(id), node.Name, node.Type, node.Host, node.Port, node.ServerInfo, node.Rate, node.GetGroupIDList(), node.ParentID)
 		}
 	}
 
@@ -409,11 +409,72 @@ func (h *NodeHandler) BatchResetNodeTraffic(c *gin.Context) {
 	response.Success(c, nil)
 }
 
+// SortNodeRequest 排序单个节点请求
+type SortNodeRequest struct {
+	ID    uint `json:"id"`
+	Order int  `json:"order"`
+}
+
+// SortNodes 节点排序
+func (h *NodeHandler) SortNodes(c *gin.Context) {
+	var items []SortNodeRequest
+	if err := c.ShouldBindJSON(&items); err != nil {
+		response.BadRequest(c, "Invalid request parameters: "+err.Error())
+		return
+	}
+
+	if len(items) == 0 {
+		response.BadRequest(c, "No sort items provided")
+		return
+	}
+
+	sortItems := make([]service.SortItem, len(items))
+	for i, item := range items {
+		sortItems[i] = service.SortItem{ID: item.ID, Order: item.Order}
+	}
+
+	if err := h.nodeService.SortNodes(sortItems); err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+
+	response.Success(c, nil)
+}
+
+// BatchUpdateNodeRequest 批量更新节点属性
+type BatchUpdateNodeRequest struct {
+	IDs       []uint `json:"ids" binding:"required"`
+	Show      *int   `json:"show"`
+	Enabled   *bool  `json:"enabled"`
+	MachineID *uint  `json:"machine_id"`
+}
+
+// BatchUpdateNodes 批量更新节点属性（show/enabled/machine_id）
+func (h *NodeHandler) BatchUpdateNodes(c *gin.Context) {
+	var req BatchUpdateNodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request parameters: "+err.Error())
+		return
+	}
+
+	if len(req.IDs) == 0 {
+		response.BadRequest(c, "No node IDs provided")
+		return
+	}
+
+	if err := h.nodeService.BatchUpdateNodes(req.IDs, req.Show, req.Enabled, req.MachineID); err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{"affected": len(req.IDs)})
+}
+
 // BatchNodeRequest 批量节点操作请求
 type BatchNodeRequest struct {
-	IDs     []uint `json:"ids" binding:"required"`
-	Action  string `json:"action" binding:"required,oneof=enable disable maintenance delete move"`
-	GroupID *uint  `json:"group_id"`
+	IDs      []uint `json:"ids" binding:"required"`
+	Action   string `json:"action" binding:"required,oneof=enable disable maintenance delete move"`
+	GroupIDs []uint `json:"group_ids"`
 }
 
 // BatchNodes 批量节点操作
@@ -442,11 +503,11 @@ func (h *NodeHandler) BatchNodes(c *gin.Context) {
 	case "delete":
 		err = h.nodeService.BatchDelete(req.IDs)
 	case "move":
-		if req.GroupID == nil {
-			response.BadRequest(c, "group_id is required for move action")
+		if len(req.GroupIDs) == 0 {
+			response.BadRequest(c, "group_ids is required for move action")
 			return
 		}
-		err = h.nodeService.BatchMoveGroup(req.IDs, *req.GroupID)
+		err = h.nodeService.BatchMoveGroup(req.IDs, req.GroupIDs)
 	default:
 		response.BadRequest(c, "Invalid action")
 		return

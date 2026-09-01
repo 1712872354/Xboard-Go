@@ -10,7 +10,7 @@ import (
 
 // PluginService 插件服务接口
 type PluginService interface {
-	Create(name, title, description, version, author, homepage, config string) (*model.Plugin, error)
+	Create(name, title, description, version, author, homepage, config, pluginType string) (*model.Plugin, error)
 	GetByID(id uint) (*model.Plugin, error)
 	GetByName(name string) (*model.Plugin, error)
 	Update(id uint, name, title, description, version, author, homepage, config string, status int) (*model.Plugin, error)
@@ -34,7 +34,7 @@ func NewPluginService(pluginRepo repository.PluginRepository) PluginService {
 }
 
 // Create 创建插件
-func (s *pluginService) Create(name, title, description, version, author, homepage, config string) (*model.Plugin, error) {
+func (s *pluginService) Create(name, title, description, version, author, homepage, config, pluginType string) (*model.Plugin, error) {
 	// 检查插件名称是否已存在
 	existing, err := s.pluginRepo.GetByName(name)
 	if err != nil {
@@ -53,6 +53,7 @@ func (s *pluginService) Create(name, title, description, version, author, homepa
 		Author:      author,
 		Homepage:    homepage,
 		Config:      config,
+		Type:        pluginType,
 		Status:      0,
 		InstalledAt: &now,
 	}

@@ -20,7 +20,7 @@ type TicketRepository interface {
 
 	// 列表查询
 	ListByUser(userID uint, page, pageSize int, status int) ([]model.Ticket, int64, error)
-	ListAll(page, pageSize int, status int, category int) ([]model.Ticket, int64, error)
+	ListAll(page, pageSize int, status int, category int, keyword string) ([]model.Ticket, int64, error)
 
 	// 回复操作
 	AddReply(reply *model.TicketReply) error
@@ -94,7 +94,7 @@ func (r *ticketRepository) ListByUser(userID uint, page, pageSize int, status in
 }
 
 // ListAll 所有工单列表（管理员）
-func (r *ticketRepository) ListAll(page, pageSize int, status int, category int) ([]model.Ticket, int64, error) {
+func (r *ticketRepository) ListAll(page, pageSize int, status int, category int, keyword string) ([]model.Ticket, int64, error) {
 	var tickets []model.Ticket
 	var total int64
 
@@ -105,6 +105,10 @@ func (r *ticketRepository) ListAll(page, pageSize int, status int, category int)
 	}
 	if category >= 0 {
 		query = query.Where("category = ?", category)
+	}
+	if keyword != "" {
+		query = query.Joins("LEFT JOIN users ON users.id = tickets.user_id").
+			Where("users.email LIKE ?", "%"+keyword+"%")
 	}
 
 	if err := query.Count(&total).Error; err != nil {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -12,19 +12,29 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatCurrency } from '@/lib/utils'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, X } from 'lucide-react'
 import type { Plan } from '@/types'
 
 const planSchema = z.object({
   name: z.string().min(1, '请输入名称'),
   description: z.string().optional(),
+  content: z.string().optional(),
   price: z.coerce.number().min(0, '价格不能为负'),
   duration_days: z.coerce.number().min(1, '天数至少为1'),
   traffic: z.coerce.number().min(0),
   device_limit: z.coerce.number().min(0),
+  speed_limit: z.coerce.number().min(0).optional(),
   node_group: z.string().optional(),
+  show: z.coerce.number().optional().default(1),
+  sell: z.coerce.number().optional().default(1),
+  renew: z.coerce.number().optional().default(1),
+  capacity_limit: z.coerce.number().min(0).optional(),
+  tags: z.string().optional(),
+  reset_traffic_method: z.coerce.number().optional(),
 })
 
 type PlanForm = z.infer<typeof planSchema>
@@ -38,10 +48,33 @@ function PlanFormDialog({
   defaultValues?: Partial<PlanForm>
   title: string
 }) {
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<PlanForm>({
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<PlanForm>({
     resolver: zodResolver(planSchema),
     defaultValues,
   })
+
+  const tagsValue = watch('tags') ?? ''
+  const resetTrafficMethod = watch('reset_traffic_method')
+
+  const [tagInput, setTagInput] = useState('')
+
+  const handleAddTag = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const val = tagInput.trim()
+      if (!val) return
+      const current = (watch('tags') ?? '').split(',').filter(Boolean)
+      if (!current.includes(val)) {
+        setValue('tags', [...current, val].join(','))
+      }
+      setTagInput('')
+    }
+  }, [tagInput, setValue, watch])
+
+  const handleRemoveTag = useCallback((tag: string) => {
+    const current = (watch('tags') ?? '').split(',').filter(Boolean)
+    setValue('tags', current.filter(t => t !== tag).join(','))
+  }, [setValue, watch])
 
   const handleFormSubmit = (data: PlanForm) => {
     onSubmit(data)
@@ -72,6 +105,10 @@ function PlanFormDialog({
             <Label>描述</Label>
             <Textarea {...register('description')} rows={2} />
           </div>
+          <div className="space-y-2">
+            <Label>套餐说明</Label>
+            <Textarea {...register('content')} rows={3} placeholder="套餐详细说明，对用户展示" />
+          </div>
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>天数</Label>
@@ -86,9 +123,54 @@ function PlanFormDialog({
               <Input type="number" {...register('device_limit')} />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>节点组</Label>
+              <Input {...register('node_group')} />
+            </div>
+            <div className="space-y-2">
+              <Label>限速 (Mbps)</Label>
+              <Input type="number" {...register('speed_limit')} placeholder="0 表示不限" />
+            </div>
+          </div>
           <div className="space-y-2">
-            <Label>节点组</Label>
-            <Input {...register('node_group')} />
+            <Label>容量限制</Label>
+            <Input type="number" {...register('capacity_limit')} placeholder="0 = 无限制" />
+          </div>
+          <div className="space-y-2">
+            <Label>流量重置方式</Label>
+            <Select value={resetTrafficMethod != null ? String(resetTrafficMethod) : '0'} onValueChange={(v) => setValue('reset_traffic_method', Number(v))}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">跟随系统</SelectItem>
+                <SelectItem value="1">每月1号</SelectItem>
+                <SelectItem value="2">按月重置（按购买日）</SelectItem>
+                <SelectItem value="3">不重置</SelectItem>
+                <SelectItem value="4">每年1月1号</SelectItem>
+                <SelectItem value="5">按年重置（按购买日）</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>标签</Label>
+            <div className="flex flex-wrap gap-1.5 mb-1">
+              {tagsValue.split(',').filter(Boolean).map((tag) => (
+                <Badge key={tag} variant="secondary" className="gap-1 pr-1">
+                  {tag}
+                  <button type="button" onClick={() => handleRemoveTag(tag)} className="ml-0.5 rounded-full hover:bg-muted-foreground/20">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+            <Input
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={handleAddTag}
+              placeholder="输入标签后回车添加"
+            />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
@@ -149,6 +231,9 @@ export default function PlansPage() {
                     <TableHead>价格</TableHead>
                     <TableHead>天数</TableHead>
                     <TableHead>流量</TableHead>
+                    <TableHead className="text-center">显示</TableHead>
+                    <TableHead className="text-center">新购</TableHead>
+                    <TableHead className="text-center">续费</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead className="text-right">操作</TableHead>
                   </TableRow>
@@ -160,6 +245,27 @@ export default function PlansPage() {
                       <TableCell>{formatCurrency(p.price)}</TableCell>
                       <TableCell>{p.duration_days} 天</TableCell>
                       <TableCell>{p.traffic ? `${(p.traffic / 1073741824).toFixed(0)} GB` : '不限'}</TableCell>
+                      <TableCell className="text-center">
+                        <Switch
+                          checked={p.show === 1}
+                          onCheckedChange={(v) => updatePlan.mutate({ id: p.id, show: v ? 1 : 0 })}
+                          aria-label="显示"
+                        />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Switch
+                          checked={p.sell === 1}
+                          onCheckedChange={(v) => updatePlan.mutate({ id: p.id, sell: v ? 1 : 0 })}
+                          aria-label="新购"
+                        />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Switch
+                          checked={p.renew === 1}
+                          onCheckedChange={(v) => updatePlan.mutate({ id: p.id, renew: v ? 1 : 0 })}
+                          aria-label="续费"
+                        />
+                      </TableCell>
                       <TableCell>
                         <Badge variant={p.status === 1 ? 'success' : 'secondary'}>{p.status === 1 ? '启用' : '禁用'}</Badge>
                       </TableCell>

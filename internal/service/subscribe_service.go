@@ -197,7 +197,7 @@ func (s *subscribeService) generateClashSubscribe(user *model.User, nodes []mode
 func (s *subscribeService) buildClashProxy(user *model.User, node model.Node, info *model.ServerInfoConfig) map[string]interface{} {
 	proxy := map[string]interface{}{
 		"name":   node.Name,
-		"server": node.Address,
+		"server": node.Host,
 		"port":   node.Port,
 	}
 
@@ -251,7 +251,7 @@ func (s *subscribeService) buildClashProxy(user *model.User, node model.Node, in
 		proxy["password"] = user.SubscribeToken
 		sni := info.TLSServerName
 		if sni == "" {
-			sni = node.Address
+			sni = node.Host
 		}
 		proxy["sni"] = sni
 		if info.AllowInsecure {
@@ -279,7 +279,7 @@ func (s *subscribeService) buildClashProxy(user *model.User, node model.Node, in
 		proxy["password"] = user.SubscribeToken
 		sni := info.TLSServerName
 		if sni == "" {
-			sni = node.Address
+			sni = node.Host
 		}
 		proxy["sni"] = sni
 		if info.ALPN != "" {
@@ -307,7 +307,7 @@ func (s *subscribeService) buildClashProxy(user *model.User, node model.Node, in
 		proxy["password"] = user.SubscribeToken
 		sni := info.TLSServerName
 		if sni == "" {
-			sni = node.Address
+			sni = node.Host
 		}
 		proxy["sni"] = sni
 		if info.ALPN != "" {
@@ -421,7 +421,7 @@ func (s *subscribeService) buildVMessLink(user *model.User, node model.Node, inf
 	vmessConfig := map[string]interface{}{
 		"v":    "2",
 		"ps":   node.Name,
-		"add":  node.Address,
+		"add":  node.Host,
 		"port": strconv.Itoa(node.Port),
 		"id":   user.SubscribeToken,
 		"aid":  strconv.Itoa(info.AlterID),
@@ -477,7 +477,7 @@ func (s *subscribeService) buildVLESSLink(user *model.User, node model.Node, inf
 	}
 
 	return fmt.Sprintf("vless://%s@%s:%d?%s#%s",
-		user.SubscribeToken, node.Address, node.Port, params.Encode(), url.PathEscape(node.Name))
+		user.SubscribeToken, node.Host, node.Port, params.Encode(), url.PathEscape(node.Name))
 }
 
 // buildTrojanLink 构建Trojan分享链接
@@ -485,7 +485,7 @@ func (s *subscribeService) buildTrojanLink(user *model.User, node model.Node, in
 	params := url.Values{}
 	sni := info.TLSServerName
 	if sni == "" {
-		sni = node.Address
+		sni = node.Host
 	}
 	params.Set("sni", sni)
 	if info.AllowInsecure {
@@ -496,7 +496,7 @@ func (s *subscribeService) buildTrojanLink(user *model.User, node model.Node, in
 	}
 
 	return fmt.Sprintf("trojan://%s@%s:%d?%s#%s",
-		url.QueryEscape(user.SubscribeToken), node.Address, node.Port, params.Encode(), url.PathEscape(node.Name))
+		url.QueryEscape(user.SubscribeToken), node.Host, node.Port, params.Encode(), url.PathEscape(node.Name))
 }
 
 // buildSSLink 构建Shadowsocks分享链接
@@ -509,7 +509,7 @@ func (s *subscribeService) buildSSLink(user *model.User, node model.Node, info *
 	if password == "" {
 		password = user.SubscribeToken
 	}
-	ssURL := fmt.Sprintf("%s:%s@%s:%d", cipher, password, node.Address, node.Port)
+	ssURL := fmt.Sprintf("%s:%s@%s:%d", cipher, password, node.Host, node.Port)
 	return "ss://" + base64.StdEncoding.EncodeToString([]byte(ssURL)) + "#" + url.PathEscape(node.Name)
 }
 
@@ -518,7 +518,7 @@ func (s *subscribeService) buildHysteria2Link(user *model.User, node model.Node,
 	params := url.Values{}
 	sni := info.TLSServerName
 	if sni == "" {
-		sni = node.Address
+		sni = node.Host
 	}
 	params.Set("sni", sni)
 	if info.ALPN != "" {
@@ -541,7 +541,7 @@ func (s *subscribeService) buildHysteria2Link(user *model.User, node model.Node,
 	}
 
 	return fmt.Sprintf("hysteria2://%s@%s:%d?%s#%s",
-		url.QueryEscape(user.SubscribeToken), node.Address, node.Port, params.Encode(), url.PathEscape(node.Name))
+		url.QueryEscape(user.SubscribeToken), node.Host, node.Port, params.Encode(), url.PathEscape(node.Name))
 }
 
 // buildTUICLink 构建TUIC分享链接
@@ -549,7 +549,7 @@ func (s *subscribeService) buildTUICLink(user *model.User, node model.Node, info
 	params := url.Values{}
 	sni := info.TLSServerName
 	if sni == "" {
-		sni = node.Address
+		sni = node.Host
 	}
 	params.Set("sni", sni)
 	if info.ALPN != "" {
@@ -563,7 +563,7 @@ func (s *subscribeService) buildTUICLink(user *model.User, node model.Node, info
 	}
 
 	return fmt.Sprintf("tuic://%s:%s@%s:%d?%s#%s",
-		user.SubscribeToken, user.SubscribeToken, node.Address, node.Port, params.Encode(), url.PathEscape(node.Name))
+		user.SubscribeToken, user.SubscribeToken, node.Host, node.Port, params.Encode(), url.PathEscape(node.Name))
 }
 
 // generateShadowrocketSubscribe 生成 Shadowrocket 格式订阅（base64 编码的分享链接，带流量信息）
@@ -693,7 +693,7 @@ func (s *subscribeService) buildSingBoxOutbound(user *model.User, node model.Nod
 	}
 	sni := info.TLSServerName
 	if sni == "" {
-		sni = node.Address
+		sni = node.Host
 	}
 
 	switch node.Type {
@@ -701,7 +701,7 @@ func (s *subscribeService) buildSingBoxOutbound(user *model.User, node model.Nod
 		outbound := map[string]interface{}{
 			"type":        "vmess",
 			"tag":         node.Name,
-			"server":      node.Address,
+			"server":      node.Host,
 			"server_port": node.Port,
 			"uuid":        user.SubscribeToken,
 			"security":    "auto",
@@ -721,7 +721,7 @@ func (s *subscribeService) buildSingBoxOutbound(user *model.User, node model.Nod
 		outbound := map[string]interface{}{
 			"type":        "vless",
 			"tag":         node.Name,
-			"server":      node.Address,
+			"server":      node.Host,
 			"server_port": node.Port,
 			"uuid":        user.SubscribeToken,
 		}
@@ -735,7 +735,7 @@ func (s *subscribeService) buildSingBoxOutbound(user *model.User, node model.Nod
 		outbound := map[string]interface{}{
 			"type":        "trojan",
 			"tag":         node.Name,
-			"server":      node.Address,
+			"server":      node.Host,
 			"server_port": node.Port,
 			"password":    user.SubscribeToken,
 		}
@@ -754,7 +754,7 @@ func (s *subscribeService) buildSingBoxOutbound(user *model.User, node model.Nod
 		return map[string]interface{}{
 			"type":        "shadowsocks",
 			"tag":         node.Name,
-			"server":      node.Address,
+			"server":      node.Host,
 			"server_port": node.Port,
 			"method":      cipher,
 			"password":    password,
@@ -764,7 +764,7 @@ func (s *subscribeService) buildSingBoxOutbound(user *model.User, node model.Nod
 		outbound := map[string]interface{}{
 			"type":        "hysteria2",
 			"tag":         node.Name,
-			"server":      node.Address,
+			"server":      node.Host,
 			"server_port": node.Port,
 			"password":    user.SubscribeToken,
 		}
@@ -793,7 +793,7 @@ func (s *subscribeService) buildSingBoxOutbound(user *model.User, node model.Nod
 		outbound := map[string]interface{}{
 			"type":        "tuic",
 			"tag":         node.Name,
-			"server":      node.Address,
+			"server":      node.Host,
 			"server_port": node.Port,
 			"uuid":        user.SubscribeToken,
 			"password":    user.SubscribeToken,
@@ -953,13 +953,13 @@ func (s *subscribeService) buildSurgeProxyLine(user *model.User, node model.Node
 	switch node.Type {
 	case model.NodeTypeVMess:
 		return fmt.Sprintf("%s = vmess, %s, %d, uuid=%s, tls=%v",
-			node.Name, node.Address, node.Port, user.SubscribeToken, info.TLS)
+			node.Name, node.Host, node.Port, user.SubscribeToken, info.TLS)
 	case model.NodeTypeVLESS:
 		return fmt.Sprintf("%s = vless, %s, %d, uuid=%s, tls=%v",
-			node.Name, node.Address, node.Port, user.SubscribeToken, info.TLS)
+			node.Name, node.Host, node.Port, user.SubscribeToken, info.TLS)
 	case model.NodeTypeTrojan:
 		return fmt.Sprintf("%s = trojan, %s, %d, password=%s",
-			node.Name, node.Address, node.Port, user.SubscribeToken)
+			node.Name, node.Host, node.Port, user.SubscribeToken)
 	case model.NodeTypeShadowsocks:
 		cipher := info.Cipher
 		if cipher == "" {
@@ -970,7 +970,7 @@ func (s *subscribeService) buildSurgeProxyLine(user *model.User, node model.Node
 			password = user.SubscribeToken
 		}
 		return fmt.Sprintf("%s = ss, %s, %d, method=%s, password=%s",
-			node.Name, node.Address, node.Port, cipher, password)
+			node.Name, node.Host, node.Port, cipher, password)
 	default:
 		return ""
 	}
@@ -1045,10 +1045,10 @@ func (s *subscribeService) buildLoonProxyLine(user *model.User, node model.Node,
 	switch node.Type {
 	case model.NodeTypeVMess:
 		return fmt.Sprintf("%s = vmess, %s, %d, uuid=%s, tls=%v",
-			node.Name, node.Address, node.Port, user.SubscribeToken, info.TLS)
+			node.Name, node.Host, node.Port, user.SubscribeToken, info.TLS)
 	case model.NodeTypeTrojan:
 		return fmt.Sprintf("%s = trojan, %s, %d, password=%s",
-			node.Name, node.Address, node.Port, user.SubscribeToken)
+			node.Name, node.Host, node.Port, user.SubscribeToken)
 	case model.NodeTypeShadowsocks:
 		cipher := info.Cipher
 		if cipher == "" {
@@ -1059,7 +1059,7 @@ func (s *subscribeService) buildLoonProxyLine(user *model.User, node model.Node,
 			password = user.SubscribeToken
 		}
 		return fmt.Sprintf("%s = ss, %s, %d, method=%s, password=%s",
-			node.Name, node.Address, node.Port, cipher, password)
+			node.Name, node.Host, node.Port, cipher, password)
 	default:
 		return ""
 	}

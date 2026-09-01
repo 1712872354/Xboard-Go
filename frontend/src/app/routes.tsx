@@ -39,40 +39,47 @@ const AdminInviteCodesPage = React.lazy(() => import('@/pages/admin/InviteCodesP
 const AdminPluginsPage = React.lazy(() => import('@/pages/admin/PluginsPage'))
 const AdminAuditLogsPage = React.lazy(() => import('@/pages/admin/AuditLogsPage'))
 const AdminTicketsPage = React.lazy(() => import('@/pages/admin/TicketsPage'))
-const AdminServerGroupsPage = React.lazy(() => import('@/pages/admin/ServerGroupsPage'))
-const AdminServerRoutesPage = React.lazy(() => import('@/pages/admin/ServerRoutesPage'))
-const AdminServerMachinesPage = React.lazy(() => import('@/pages/admin/ServerMachinesPage'))
 const AdminPaymentGatewaysPage = React.lazy(() => import('@/pages/admin/PaymentGatewaysPage'))
 const AdminTrafficResetLogsPage = React.lazy(() => import('@/pages/admin/TrafficResetLogsPage'))
+const AdminServerMachinesPage = React.lazy(() => import('@/pages/admin/ServerMachinesPage'))
+const AdminServerGroupsPage = React.lazy(() => import('@/pages/admin/ServerGroupsPage'))
+const AdminServerRoutesPage = React.lazy(() => import('@/pages/admin/ServerRoutesPage'))
 
 // 加载中组件
-const Loading = () => <div className="flex items-center justify-center h-screen">加载中...</div>
+const Loading = () => (
+  <div className="flex h-screen items-center justify-center">
+    <div className="flex flex-col items-center gap-2">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <span className="text-sm text-muted-foreground">加载中...</span>
+    </div>
+  </div>
+)
 
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/user/dashboard" replace /> },
-  { 
-    path: '/user/login', 
+  {
+    path: '/user/login',
     element: (
       <Suspense fallback={<Loading />}>
         <UserLoginPage />
       </Suspense>
-    ) 
+    )
   },
-  { 
-    path: '/user/register', 
+  {
+    path: '/user/register',
     element: (
       <Suspense fallback={<Loading />}>
         <UserRegisterPage />
       </Suspense>
-    ) 
+    )
   },
-  { 
-    path: '/admin/login', 
+  {
+    path: '/admin/login',
     element: (
       <Suspense fallback={<Loading />}>
         <AdminLoginPage />
       </Suspense>
-    ) 
+    )
   },
   {
     path: '/user',
@@ -85,101 +92,101 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="/user/dashboard" replace /> },
-      { 
-        path: 'dashboard', 
+      {
+        path: 'dashboard',
         element: (
           <Suspense fallback={<Loading />}>
             <UserDashboardPage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'plans', 
+      {
+        path: 'plans',
         element: (
           <Suspense fallback={<Loading />}>
             <UserPlansPage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'orders', 
+      {
+        path: 'orders',
         element: (
           <Suspense fallback={<Loading />}>
             <UserOrdersPage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'subscribe', 
+      {
+        path: 'subscribe',
         element: (
           <Suspense fallback={<Loading />}>
             <UserSubscribePage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'traffic', 
+      {
+        path: 'traffic',
         element: (
           <Suspense fallback={<Loading />}>
             <UserTrafficPage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'tickets', 
+      {
+        path: 'tickets',
         element: (
           <Suspense fallback={<Loading />}>
             <UserTicketsPage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'profile', 
+      {
+        path: 'profile',
         element: (
           <Suspense fallback={<Loading />}>
             <UserProfilePage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'coupons', 
+      {
+        path: 'coupons',
         element: (
           <Suspense fallback={<Loading />}>
             <UserCouponsPage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'gift-cards', 
+      {
+        path: 'gift-cards',
         element: (
           <Suspense fallback={<Loading />}>
             <UserGiftCardsPage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'invite', 
+      {
+        path: 'invite',
         element: (
           <Suspense fallback={<Loading />}>
             <UserInvitePage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'knowledges', 
+      {
+        path: 'knowledges',
         element: (
           <Suspense fallback={<Loading />}>
             <UserKnowledgesPage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'notices', 
+      {
+        path: 'notices',
         element: (
           <Suspense fallback={<Loading />}>
             <UserNoticesPage />
           </Suspense>
-        ) 
+        )
       },
     ],
   },
@@ -194,123 +201,77 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="/admin/dashboard" replace /> },
-      { 
-        path: 'dashboard', 
+      {
+        path: 'dashboard',
         element: (
           <Suspense fallback={<Loading />}>
             <AdminDashboardPage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'users', 
-        element: (
-          <Suspense fallback={<Loading />}>
-            <AdminUsersPage />
-          </Suspense>
-        ) 
-      },
-      { 
-        path: 'plans', 
-        element: (
-          <Suspense fallback={<Loading />}>
-            <AdminPlansPage />
-          </Suspense>
-        ) 
-      },
-      { 
-        path: 'orders', 
-        element: (
-          <Suspense fallback={<Loading />}>
-            <AdminOrdersPage />
-          </Suspense>
-        ) 
-      },
-      { 
-        path: 'nodes', 
-        element: (
-          <Suspense fallback={<Loading />}>
-            <AdminNodesPage />
-          </Suspense>
-        ) 
-      },
-      { 
-        path: 'settings', 
+      // 系统管理
+      {
+        path: 'settings',
         element: (
           <Suspense fallback={<Loading />}>
             <AdminSettingsPage />
           </Suspense>
-        ) 
+        )
       },
-      { 
-        path: 'notices', 
-        element: (
-          <Suspense fallback={<Loading />}>
-            <AdminNoticesPage />
-          </Suspense>
-        ) 
-      },
-      { 
-        path: 'knowledges', 
-        element: (
-          <Suspense fallback={<Loading />}>
-            <AdminKnowledgesPage />
-          </Suspense>
-        ) 
-      },
-      { 
-        path: 'mail-templates', 
-        element: (
-          <Suspense fallback={<Loading />}>
-            <AdminMailTemplatesPage />
-          </Suspense>
-        ) 
-      },
-      { 
-        path: 'coupons', 
-        element: (
-          <Suspense fallback={<Loading />}>
-            <AdminCouponsPage />
-          </Suspense>
-        ) 
-      },
-      { 
-        path: 'gift-cards', 
-        element: (
-          <Suspense fallback={<Loading />}>
-            <AdminGiftCardsPage />
-          </Suspense>
-        ) 
-      },
-      { 
-        path: 'invite-codes', 
-        element: (
-          <Suspense fallback={<Loading />}>
-            <AdminInviteCodesPage />
-          </Suspense>
-        ) 
-      },
-      { 
-        path: 'plugins', 
+      {
+        path: 'plugins',
         element: (
           <Suspense fallback={<Loading />}>
             <AdminPluginsPage />
           </Suspense>
-        ) 
+        )
       },
       {
-        path: 'audit-logs',
+        path: 'notices',
         element: (
           <Suspense fallback={<Loading />}>
-            <AdminAuditLogsPage />
+            <AdminNoticesPage />
           </Suspense>
         )
       },
       {
-        path: 'tickets',
+        path: 'payment-gateways',
         element: (
           <Suspense fallback={<Loading />}>
-            <AdminTicketsPage />
+            <AdminPaymentGatewaysPage />
+          </Suspense>
+        )
+      },
+      {
+        path: 'knowledges',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <AdminKnowledgesPage />
+          </Suspense>
+        )
+      },
+      {
+        path: 'mail-templates',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <AdminMailTemplatesPage />
+          </Suspense>
+        )
+      },
+      // 节点管理
+      {
+        path: 'server-machines',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <AdminServerMachinesPage />
+          </Suspense>
+        )
+      },
+      {
+        path: 'nodes',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <AdminNodesPage />
           </Suspense>
         )
       },
@@ -330,19 +291,61 @@ export const router = createBrowserRouter([
           </Suspense>
         )
       },
+      // 订阅管理
       {
-        path: 'server-machines',
+        path: 'plans',
         element: (
           <Suspense fallback={<Loading />}>
-            <AdminServerMachinesPage />
+            <AdminPlansPage />
           </Suspense>
         )
       },
       {
-        path: 'payment-gateways',
+        path: 'orders',
         element: (
           <Suspense fallback={<Loading />}>
-            <AdminPaymentGatewaysPage />
+            <AdminOrdersPage />
+          </Suspense>
+        )
+      },
+      {
+        path: 'coupons',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <AdminCouponsPage />
+          </Suspense>
+        )
+      },
+      {
+        path: 'gift-cards',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <AdminGiftCardsPage />
+          </Suspense>
+        )
+      },
+      // 用户管理
+      {
+        path: 'users',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <AdminUsersPage />
+          </Suspense>
+        )
+      },
+      {
+        path: 'tickets',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <AdminTicketsPage />
+          </Suspense>
+        )
+      },
+      {
+        path: 'invite-codes',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <AdminInviteCodesPage />
           </Suspense>
         )
       },
@@ -351,6 +354,14 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading />}>
             <AdminTrafficResetLogsPage />
+          </Suspense>
+        )
+      },
+      {
+        path: 'audit-logs',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <AdminAuditLogsPage />
           </Suspense>
         )
       },

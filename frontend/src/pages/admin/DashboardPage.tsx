@@ -7,10 +7,13 @@ import {
   useUserGrowthStats,
   useNodeStats,
   useComprehensiveStats,
+  useNodeTrafficRanking,
+  useUserTrafficRanking,
 } from '@/hooks/useDashboard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatCurrency, formatDate, formatBytes } from '@/lib/utils'
 import {
@@ -69,13 +72,18 @@ function chartTheme(isDark: boolean) {
 
 export default function DashboardPage() {
   const isDark = useThemeStore((s) => s.theme === 'dark')
+  const [incomeRangeDays, setIncomeRangeDays] = useState(7)
+  const [nodeTrafficDays, setNodeTrafficDays] = useState(7)
+  const [userTrafficDays, setUserTrafficDays] = useState(7)
   const { data: overview, isLoading: loadingOverview } = useDashboardOverview()
   const { data: compStats, isLoading: loadingComp } = useComprehensiveStats()
-  const { data: incomeData, isLoading: loadingIncome } = useIncomeStats(7)
+  const { data: incomeData, isLoading: loadingIncome } = useIncomeStats(incomeRangeDays)
   const { data: growthData, isLoading: loadingGrowth } = useUserGrowthStats(7)
   const { data: nodeStats, isLoading: loadingNodeStats } = useNodeStats()
   const { data: recentOrders, isLoading: loadingOrders } = useRecentOrders(5)
   const { data: recentUsers, isLoading: loadingUsers } = useRecentUsers(5)
+  const { data: nodeTrafficRanking, isLoading: loadingNodeTraffic } = useNodeTrafficRanking(nodeTrafficDays)
+  const { data: userTrafficRanking, isLoading: loadingUserTraffic } = useUserTrafficRanking(userTrafficDays)
 
   const theme = chartTheme(isDark)
   const primaryColor = isDark ? '#818cf8' : '#6366f1'
@@ -280,7 +288,19 @@ export default function DashboardPage() {
         <Card className="xl:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">收入趋势</CardTitle>
-            <span className="text-xs text-muted-foreground">近 7 天</span>
+            <div className="flex gap-1">
+              {([7, 30, 90] as const).map((d) => (
+                <Button
+                  key={d}
+                  variant={incomeRangeDays === d ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setIncomeRangeDays(d)}
+                >
+                  近{d}天
+                </Button>
+              ))}
+            </div>
           </CardHeader>
           <CardContent>
             {loadingIncome
@@ -409,8 +429,115 @@ export default function DashboardPage() {
             <div className="rounded-lg bg-emerald-500/10 p-2"><DollarSign className="h-5 w-5 text-emerald-500" /></div>
             <div>
               <p className="text-2xl font-bold">{formatCurrency(incomeData?.reduce((s, d) => s + d.amount, 0) ?? 0)}</p>
-              <p className="text-xs text-muted-foreground">本周收入</p>
+              <p className="text-xs text-muted-foreground">近{incomeRangeDays}天收入</p>
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">节点流量排行</CardTitle>
+            <div className="flex gap-1">
+              {([7, 30] as const).map((d) => (
+                <Button
+                  key={d}
+                  variant={nodeTrafficDays === d ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setNodeTrafficDays(d)}
+                >
+                  近{d}天
+                </Button>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loadingNodeTraffic ? (
+              <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">排名</TableHead>
+                    <TableHead>节点名称</TableHead>
+                    <TableHead className="text-right">上传流量</TableHead>
+                    <TableHead className="text-right">下载流量</TableHead>
+                    <TableHead className="text-right">总流量</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {!nodeTrafficRanking?.length ? (
+                    <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">暂无数据</TableCell></TableRow>
+                  ) : nodeTrafficRanking.slice(0, 10).map((item, idx) => (
+                    <TableRow key={item.node_id}>
+                      <TableCell>
+                        <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
+                          idx < 3 ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
+                        }`}>{idx + 1}</span>
+                      </TableCell>
+                      <TableCell className="font-medium">{item.node_name}</TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">{formatBytes(item.upload)}</TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">{formatBytes(item.download)}</TableCell>
+                      <TableCell className="text-right text-sm font-medium">{formatBytes(item.total)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">用户流量排行</CardTitle>
+            <div className="flex gap-1">
+              {([7, 30] as const).map((d) => (
+                <Button
+                  key={d}
+                  variant={userTrafficDays === d ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setUserTrafficDays(d)}
+                >
+                  近{d}天
+                </Button>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loadingUserTraffic ? (
+              <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">排名</TableHead>
+                    <TableHead>用户邮箱</TableHead>
+                    <TableHead className="text-right">上传流量</TableHead>
+                    <TableHead className="text-right">下载流量</TableHead>
+                    <TableHead className="text-right">总流量</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {!userTrafficRanking?.length ? (
+                    <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">暂无数据</TableCell></TableRow>
+                  ) : userTrafficRanking.slice(0, 10).map((item, idx) => (
+                    <TableRow key={item.user_id}>
+                      <TableCell>
+                        <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
+                          idx < 3 ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
+                        }`}>{idx + 1}</span>
+                      </TableCell>
+                      <TableCell className="font-medium">{item.user_email}</TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">{formatBytes(item.upload)}</TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">{formatBytes(item.download)}</TableCell>
+                      <TableCell className="text-right text-sm font-medium">{formatBytes(item.total)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '@/lib/api'
@@ -7,10 +7,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { formatDate } from '@/lib/utils'
-import { MessageSquare, X, RefreshCw, Loader2 } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { formatDate, formatCurrency } from '@/lib/utils'
+import { MessageSquare, X, RefreshCw, Loader2, Search, User as UserIcon, CreditCard, Calendar, Package } from 'lucide-react'
+import { usePlans } from '@/hooks/usePlans'
 
 interface Ticket {
   id: number
@@ -22,6 +25,17 @@ interface Ticket {
   user?: { email: string }
   created_at: string
   updated_at: string
+}
+
+interface TicketDetailUser {
+  id: number
+  email: string
+  balance: number
+  commission: number
+  plan_id?: number | null
+  expired_at?: string | null
+  traffic_limit: number
+  used_traffic: number
 }
 
 interface TicketReply {
@@ -36,6 +50,7 @@ const statusMap: Record<number, { label: string; variant: 'default' | 'secondary
   0: { label: '待处理', variant: 'warning' },
   1: { label: '已回复', variant: 'default' },
   2: { label: '已关闭', variant: 'secondary' },
+  3: { label: '处理中', variant: 'default' },
 }
 
 const priorityMap: Record<number, string> = {
@@ -54,11 +69,26 @@ const categoryMap: Record<number, string> = {
 function TicketDetail({ ticketId, onClose }: { ticketId: number; onClose: () => void }) {
   const qc = useQueryClient()
   const [replyContent, setReplyContent] = useState('')
+  const { data: plans } = usePlans()
 
-  const { data: ticket, isLoading } = useQuery({
+  const { data: ticketData, isLoading } = useQuery({
     queryKey: ['admin', 'ticket', ticketId],
-    queryFn: async () => await api.get(`/admin/tickets/${ticketId}`) as unknown as Ticket & { replies: TicketReply[] },
+    queryFn: async () => {
+      const res = await api.get(`/admin/tickets/${ticketId}`) as unknown as { ticket: Ticket & { user?: TicketDetailUser }; replies: TicketReply[] }
+      return res
+    },
   })
+
+  const ticket = ticketData?.ticket
+  const replies = ticketData?.replies
+
+  const { data: userData } = useQuery({
+    queryKey: ['admin', 'user', ticket?.user_id],
+    queryFn: async () => await api.get(`/admin/users/${ticket?.user_id}`) as unknown as TicketDetailUser,
+    enabled: !!ticket?.user_id,
+  })
+
+  const userInfo = userData || ticket?.user
 
   const replyMutation = useMutation({
     mutationFn: async (content: string) => await api.post(`/admin/tickets/${ticketId}/reply`, { content }),
@@ -83,6 +113,8 @@ function TicketDetail({ ticketId, onClose }: { ticketId: number; onClose: () => 
 
   if (isLoading) return <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20" />)}</div>
 
+  const planName = userInfo?.plan_id ? (plans?.find((p) => p.id === userInfo.plan_id)?.name || `#${userInfo.plan_id}`) : '无套餐'
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -97,8 +129,45 @@ function TicketDetail({ ticketId, onClose }: { ticketId: number; onClose: () => 
         </Badge>
       </div>
 
+      {userInfo && (
+        <Card className="bg-muted/30">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <UserIcon className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">用户信息</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">邮箱：</span>
+                <span className="font-medium">{userInfo.email || ticket?.user?.email || '-'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-muted-foreground">余额：</span>
+                <span className="font-medium">{formatCurrency(userInfo.balance ?? 0)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-muted-foreground">佣金余额：</span>
+                <span className="font-medium">{formatCurrency(userInfo.commission ?? 0)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-muted-foreground">套餐：</span>
+                <span className="font-medium">{planName}</span>
+              </div>
+              <div className="flex items-center gap-2 col-span-2">
+                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-muted-foreground">到期时间：</span>
+                <span className="font-medium">{userInfo.expired_at ? formatDate(userInfo.expired_at) : '永不过期'}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="space-y-3 max-h-[400px] overflow-y-auto">
-        {ticket?.replies?.map((reply) => (
+        {replies?.map((reply) => (
           <div key={reply.id} className={`rounded-lg p-3 ${reply.is_admin ? 'bg-primary/5 ml-8' : 'bg-muted mr-8'}`}>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-sm font-medium">{reply.is_admin ? '管理员' : reply.user?.email}</span>
@@ -139,14 +208,34 @@ function TicketDetail({ ticketId, onClose }: { ticketId: number; onClose: () => 
 export default function TicketsPage() {
   const [selectedTicket, setSelectedTicket] = useState<number | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [replyStatus, setReplyStatus] = useState<string>('all')
+  const [keyword, setKeyword] = useState('')
+  const [searchKeyword, setSearchKeyword] = useState('')
+  const [page, setPage] = useState(1)
+  const pageSize = 20
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['admin', 'tickets', statusFilter],
+    queryKey: ['admin', 'tickets', statusFilter, replyStatus, searchKeyword, page],
     queryFn: async () => {
-      const params = statusFilter !== 'all' ? `?status=${statusFilter}` : ''
-      return await api.get(`/admin/tickets${params}`) as unknown as { list: Ticket[]; total: number }
+      const params = new URLSearchParams()
+      params.set('page', String(page))
+      params.set('page_size', String(pageSize))
+      if (statusFilter !== 'all') params.set('status', statusFilter)
+      if (replyStatus !== 'all') params.set('reply_status', replyStatus)
+      if (searchKeyword) params.set('keyword', searchKeyword)
+      return await api.get(`/admin/tickets?${params.toString()}`) as unknown as { list: Ticket[]; total: number }
     },
   })
+
+  const handleSearch = useCallback(() => {
+    setSearchKeyword(keyword.trim())
+    setPage(1)
+  }, [keyword])
+
+  const handleResetSearch = useCallback(() => {
+    setKeyword('')
+    setSearchKeyword('')
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -164,23 +253,51 @@ export default function TicketsPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>工单列表</CardTitle>
-          <div className="flex gap-2">
-            {['all', '0', '1', '2'].map((s) => (
+          <div className="flex gap-2 items-center">
+            {['all', '0', '1', '3', '2'].map((s) => (
               <Button
                 key={s}
                 variant={statusFilter === s ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setStatusFilter(s)}
+                onClick={() => { setStatusFilter(s); setPage(1) }}
               >
                 {s === 'all' ? '全部' : statusMap[Number(s)]?.label}
               </Button>
             ))}
+            <Select value={replyStatus} onValueChange={(v) => { setReplyStatus(v); setPage(1) }}>
+              <SelectTrigger className="h-8 w-[120px]">
+                <SelectValue placeholder="回复状态" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部回复状态</SelectItem>
+                <SelectItem value="0">待回复</SelectItem>
+                <SelectItem value="1">已回复</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-1 ml-2">
+              <Input
+                placeholder="搜索用户邮箱..."
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSearch() }}
+                className="h-8 w-[200px]"
+              />
+              <Button variant="outline" size="sm" className="h-8 px-2" onClick={handleSearch}>
+                <Search className="h-4 w-4" />
+              </Button>
+              {searchKeyword && (
+                <Button variant="ghost" size="sm" className="h-8 px-2" onClick={handleResetSearch}>
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -191,7 +308,7 @@ export default function TicketsPage() {
                   <TableHead>优先级</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>更新时间</TableHead>
-                  <TableHead>操作</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -206,7 +323,7 @@ export default function TicketsPage() {
                     <TableCell><Badge variant={t.priority === 2 ? 'destructive' : t.priority === 1 ? 'default' : 'secondary'}>{priorityMap[t.priority]}</Badge></TableCell>
                     <TableCell><Badge variant={statusMap[t.status]?.variant}>{statusMap[t.status]?.label}</Badge></TableCell>
                     <TableCell className="text-xs text-muted-foreground">{formatDate(t.updated_at)}</TableCell>
-                    <TableCell>
+                    <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => setSelectedTicket(t.id)}>
                         <MessageSquare className="h-4 w-4" />
                       </Button>
@@ -215,6 +332,17 @@ export default function TicketsPage() {
                 ))}
               </TableBody>
             </Table>
+            {data && data.total > pageSize && (
+              <div className="mt-4 flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">共 {data.total} 条</p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button>
+                  <span className="flex items-center text-sm">{page} / {Math.ceil(data.total / pageSize)}</span>
+                  <Button size="sm" variant="outline" disabled={page >= Math.ceil(data.total / pageSize)} onClick={() => setPage(page + 1)}>下一页</Button>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>

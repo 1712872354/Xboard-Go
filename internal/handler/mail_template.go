@@ -4,7 +4,10 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"xboard-go/internal/middleware"
+	"xboard-go/internal/model"
 	"xboard-go/internal/service"
+	"xboard-go/pkg/database"
 	"xboard-go/pkg/response"
 )
 
@@ -148,5 +151,62 @@ func (h *MailTemplateHandler) ListMailTemplates(c *gin.Context) {
 		"total": total,
 		"page":  page,
 		"page_size": pageSize,
+	})
+}
+
+// ResetMailTemplate 恢复默认模板（管理员）
+func (h *MailTemplateHandler) ResetMailTemplate(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的模板ID")
+		return
+	}
+
+	template, err := h.mailTemplateService.ResetMailTemplate(uint(id))
+	if err != nil {
+		response.InternalError(c, "恢复默认模板失败："+err.Error())
+		return
+	}
+
+	response.Success(c, template)
+}
+
+// TestMailTemplateRequest 发送测试邮件请求
+type TestMailTemplateRequest struct {
+	Email string `json:"email"`
+}
+
+// TestMailTemplate 发送测试邮件（管理员）
+func (h *MailTemplateHandler) TestMailTemplate(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的模板ID")
+		return
+	}
+
+	var req TestMailTemplateRequest
+	_ = c.ShouldBindJSON(&req)
+
+	email := req.Email
+	if email == "" {
+		// 使用当前管理员邮箱
+		userID := middleware.GetUserID(c)
+		var user model.User
+		if err := database.Get().First(&user, userID).Error; err != nil {
+			response.BadRequest(c, "无法获取管理员邮箱")
+			return
+		}
+		email = user.Email
+	}
+
+	if err := h.mailTemplateService.TestMailTemplate(uint(id), email); err != nil {
+		response.InternalError(c, "发送测试邮件失败："+err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{
+		"message": "测试邮件已发送至 " + email,
 	})
 }

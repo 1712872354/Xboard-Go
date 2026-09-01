@@ -1,7 +1,13 @@
+import { useState } from 'react'
+import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Button } from '@/components/ui/button'
+import { Loader2, KeyRound } from 'lucide-react'
+import api from '@/lib/api'
 
 export interface TlsSettingsProps {
   mode: 0 | 1 | 2
@@ -13,11 +19,35 @@ export interface TlsSettingsProps {
 const TLS_REQUIRED_PROTOCOLS = ['trojan', 'hysteria', 'hysteria2', 'tuic', 'anytls']
 
 export function TlsSettings({ mode, value, onChange, protocol }: TlsSettingsProps) {
+  const [echGenerating, setEchGenerating] = useState(false)
+
   const update = (key: string, v: any) => {
     onChange({ ...value, [key]: v })
   }
 
   const hideModeSelector = TLS_REQUIRED_PROTOCOLS.includes(protocol)
+
+  const handleGenerateEchKey = async () => {
+    const publicName = value.server_name || value.ech_query_server_name || ''
+    if (!publicName) {
+      toast.error('请先填写 Server Name 或查询服务器名称')
+      return
+    }
+    setEchGenerating(true)
+    try {
+      const res = await api.get('/admin/nodes/generate-ech-key', { params: { public_name: publicName } }) as unknown as { key: string; config: string }
+      onChange({
+        ...value,
+        ech_key: res.key,
+        ech_config: res.config,
+      })
+      toast.success('ECH 密钥已生成')
+    } catch {
+      toast.error('ECH 密钥生成失败')
+    } finally {
+      setEchGenerating(false)
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -67,6 +97,36 @@ export function TlsSettings({ mode, value, onChange, protocol }: TlsSettingsProp
                 <Switch checked={!!value.allow_insecure} onCheckedChange={(v) => update('allow_insecure', v)} />
                 <Label>允许不安全连接</Label>
               </div>
+            </div>
+          </div>
+          {/* ECH Settings */}
+          <div className="rounded-lg border p-3 space-y-3">
+            <Label className="text-sm font-medium">ECH (Encrypted Client Hello)</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">查询服务器名称</Label>
+                <Input placeholder="example.com" value={value.ech_query_server_name ?? ''} onChange={(e) => update('ech_query_server_name', e.target.value)} />
+              </div>
+              <div className="flex items-end">
+                <Button type="button" variant="outline" size="sm" onClick={handleGenerateEchKey} disabled={echGenerating}>
+                  {echGenerating ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <KeyRound className="mr-1.5 h-3.5 w-3.5" />}
+                  生成ECH密钥
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">ECH 配置</Label>
+              <Textarea
+                placeholder="-----BEGIN ECH CONFIGS-----&#10;...&#10;-----END ECH CONFIGS-----"
+                rows={3}
+                className="font-mono text-xs"
+                value={value.ech_config ?? ''}
+                onChange={(e) => update('ech_config', e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">ECH 密钥</Label>
+              <Input placeholder="ECH 私钥" className="font-mono text-xs" value={value.ech_key ?? ''} onChange={(e) => update('ech_key', e.target.value)} />
             </div>
           </div>
         </div>

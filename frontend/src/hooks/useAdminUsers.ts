@@ -3,11 +3,24 @@ import api from '@/lib/api'
 import type { User, PaginatedResponse } from '@/types'
 import { toast } from 'sonner'
 
-export const useAdminUsers = (page = 1, pageSize = 20, keyword = '') =>
+export const useAdminUsers = (
+  page = 1,
+  pageSize = 20,
+  keyword = '',
+  filters?: { status?: number; role?: string; plan_id?: number; expired?: boolean },
+) =>
   useQuery({
-    queryKey: ['admin', 'users', page, pageSize, keyword],
+    queryKey: ['admin', 'users', page, pageSize, keyword, filters],
     queryFn: async () =>
-      (await api.get('/admin/users', { params: { page, page_size: pageSize, keyword } })) as unknown as PaginatedResponse<User>,
+      (await api.get('/admin/users', {
+        params: {
+          page, page_size: pageSize, keyword: keyword || undefined,
+          status: filters?.status,
+          role: filters?.role || undefined,
+          plan_id: filters?.plan_id,
+          expired: filters?.expired,
+        },
+      })) as unknown as PaginatedResponse<User>,
   })
 
 export const useAdminUser = (id: number) =>

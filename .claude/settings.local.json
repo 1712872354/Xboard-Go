@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(go get *)",
-      "WebFetch(domain:xboard.dev)"
+      "WebFetch(domain:xboard.dev)",
+      "WebFetch(domain:mimo.mi.com)"
     ]
   }
 }

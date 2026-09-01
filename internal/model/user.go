@@ -29,6 +29,18 @@ type User struct {
 	OnlineCount     int        `gorm:"default:0" json:"online_count"`               // 在线设备数
 	LastOnlineAt    *time.Time `json:"last_online_at"`                              // 最后在线时间
 	PlanID          *uint      `json:"plan_id"`                                     // 当前套餐ID
+	UUID            string     `gorm:"type:varchar(36);uniqueIndex" json:"uuid"`      // 用户UUID
+	InviterID       *uint      `gorm:"index" json:"inviter_id"`                       // 邀请人用户ID
+	CommissionType  int        `gorm:"default:0" json:"commission_type"`               // 佣金类型：0=系统 1=按周期 2=一次性
+	CommissionRate  *int       `json:"commission_rate"`                                // 返佣比例（0-100）
+	Discount        *int       `json:"discount"`                                       // 专享折扣比例
+	SpeedLimit      *int       `json:"speed_limit"`                                    // 用户级限速（Mbps）
+	DeviceLimit     *int       `json:"device_limit"`                                   // 用户级设备限制
+	GroupID         *uint      `gorm:"index" json:"group_id"`                          // 权限组ID
+	Remarks         string     `gorm:"type:text" json:"remarks"`                       // 管理员备注
+	LastLoginAt     *time.Time `json:"last_login_at"`                                  // 最后登录时间
+	LastLoginIP     string     `gorm:"type:varchar(45)" json:"last_login_ip"`          // 最后登录IP
+	IsStaff         bool       `gorm:"default:false" json:"is_staff"`                  // 员工标识
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 }

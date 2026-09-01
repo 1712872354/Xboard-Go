@@ -17,7 +17,7 @@ type UserService interface {
 	UpdateProfile(id uint, email string) (*model.User, error)
 	ChangePassword(id uint, oldPassword, newPassword string) error
 	ResetSubscribeToken(id uint) (string, error)
-	ListUsers(page, pageSize int, keyword string) ([]model.User, int64, error)
+	ListUsers(page, pageSize int, filter repository.UserFilter) ([]model.User, int64, error)
 	UpdateUserStatus(id uint, status int) error
 	UpdateUserRole(id uint, role string) error
 	DeleteUser(id uint) error
@@ -177,7 +177,7 @@ func (s *userService) ExportUsersCSV(page, pageSize int, keyword string) (string
 		pageSize = 100
 	}
 
-	users, _, err := s.userRepo.List(page, pageSize, keyword)
+	users, _, err := s.userRepo.List(page, pageSize, repository.UserFilter{Keyword: keyword})
 	if err != nil {
 		return "", err
 	}
@@ -228,14 +228,14 @@ func (s *userService) ResetSubscribeToken(id uint) (string, error) {
 }
 
 // ListUsers 用户列表（管理员）
-func (s *userService) ListUsers(page, pageSize int, keyword string) ([]model.User, int64, error) {
+func (s *userService) ListUsers(page, pageSize int, filter repository.UserFilter) ([]model.User, int64, error) {
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	return s.userRepo.List(page, pageSize, keyword)
+	return s.userRepo.List(page, pageSize, filter)
 }
 
 // UpdateUserStatus 更新用户状态

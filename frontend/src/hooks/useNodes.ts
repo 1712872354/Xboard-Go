@@ -56,3 +56,29 @@ export const useUpdateNodeStatus = () => {
     },
   })
 }
+
+export const useSortNodes = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (items: { id: number; order: number }[]) =>
+      await api.post('/admin/nodes/sort', items),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'nodes'] })
+    },
+  })
+}
+
+export const useBatchUpdateNodes = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: {
+      ids: number[]
+      show?: number
+      enabled?: boolean
+      machine_id?: number
+    }) => await api.post('/admin/nodes/batch-update', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'nodes'] })
+    },
+  })
+}
