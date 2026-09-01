@@ -149,7 +149,7 @@ function New-ConfigFile {
         "sqlite" {
             $dbConfig = @"
   driver: sqlite
-  dbname: $($dataDir -replace '\\','/')/xboard.db
+  dbname: $($dataDir')/xboard.db
 "@
         }
         "mysql" {
@@ -209,6 +209,7 @@ server:
   host: "0.0.0.0"
   port: $($script:HttpPort)
   mode: release
+  allowed_origins: []
 
 database:
 $dbConfig
@@ -223,6 +224,15 @@ app:
   name: $($script:SiteName)
   node_api_key: $($script:NodeApiKey)
   default_user_role: user
+  subscribe_token_length: 32
+
+# 验证码配置 (可选，取消注释以启用)
+# captcha:
+#   provider: turnstile
+#   site_key: your_site_key
+#   secret_key: your_secret_key
+#   min_score: 0.5
+  bcrypt_cost: 10
 
 jwt:
   secret: "$($script:AppKey)"
@@ -243,6 +253,7 @@ rate_limit:
     - "::1"
   path_whitelist:
     - "/healthz"
+    - "/api/v1/client/subscribe"
 "@
 
     $configContent | Out-File -FilePath "$dataDir\config.yaml" -Encoding UTF8

@@ -400,10 +400,14 @@ generate_config() {
     esac
 
     cat > "${CONFIG_PATH}" << EOF
+# Xboard-Go 配置文件
+# 生成时间: $(date "+%Y-%m-%d %H:%M:%S")
+
 server:
   host: "0.0.0.0"
   port: ${HTTP_PORT}
   mode: release
+  allowed_origins: []
 
 database:
 ${db_section}
@@ -423,6 +427,8 @@ app:
   name: ${SITE_NAME}
   node_api_key: ${NODE_API_KEY}
   default_user_role: user
+  subscribe_token_length: 32
+  bcrypt_cost: 10
 
 jwt:
   secret: "${APP_KEY}"
@@ -443,6 +449,14 @@ rate_limit:
     - "::1"
   path_whitelist:
     - "/healthz"
+    - "/api/v1/client/subscribe"
+
+# 验证码配置 (可选，取消注释以启用)
+# captcha:
+#   provider: turnstile
+#   site_key: your_site_key
+#   secret_key: your_secret_key
+#   min_score: 0.5
 EOF
 
     log_info "配置已生成: ${CONFIG_PATH}"

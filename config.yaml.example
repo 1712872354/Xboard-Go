@@ -1,54 +1,115 @@
-# Xboard-Go Configuration
+# Xboard-Go 配置文件
+# 文档: https://github.com/1712872354/Xboard-Go
 
+# ═══════════════════════════════════════════════════════════════
+# 服务器配置
+# ═══════════════════════════════════════════════════════════════
 server:
   host: "0.0.0.0"
   port: 8080
   mode: release  # debug, release, test
+  allowed_origins: []  # CORS 允许的源，空数组表示允许所有
 
+# ═══════════════════════════════════════════════════════════════
+# 数据库配置
+# ═══════════════════════════════════════════════════════════════
 database:
-  driver: sqlite  # sqlite, mysql, postgres
-  source: data/xboard.db
-  # MySQL example:
+  # SQLite 配置 (推荐，无需额外安装)
+  driver: sqlite
+  dbname: data/xboard.db
+  
+  # MySQL 配置示例
   # driver: mysql
-  # source: user:password@tcp(localhost:3306)/xboard?charset=utf8mb4&parseTime=True&loc=Local
-  # PostgreSQL example:
+  # host: localhost
+  # port: 3306
+  # user: root
+  # password: "your_password"
+  # dbname: xboard
+  # max_idle_conns: 10
+  # max_open_conns: 100
+  # conn_max_lifetime: 3600
+  
+  # PostgreSQL 配置示例
   # driver: postgres
-  # source: host=localhost user=postgres password=postgres dbname=xboard port=5432 sslmode=disable
+  # host: localhost
+  # port: 5432
+  # user: postgres
+  # password: "your_password"
+  # dbname: xboard
+  # sslmode: disable
+  # max_idle_conns: 10
+  # max_open_conns: 100
 
-# Redis (optional, for caching and rate limiting)
-# redis:
-#   addr: localhost:6379
-#   password: ""
-#   db: 0
+# ═══════════════════════════════════════════════════════════════
+# Redis 配置 (可选，用于缓存和限流)
+# ═══════════════════════════════════════════════════════════════
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 100
 
-# Application settings
-app:
-  name: Xboard-Go
-  # Secret key for JWT signing (CHANGE THIS!)
-  key: change-me-to-a-random-secret-key
-  # API key for node authentication (CHANGE THIS!)
-  node_api_key: change-me-node-api-key
-  # Default user role: user
-  default_user_role: user
-  # Subscribe token length
-  subscribe_token_length: 32
-
-# gRPC settings for node communication
+# ═══════════════════════════════════════════════════════════════
+# gRPC 配置 (节点通信)
+# ═══════════════════════════════════════════════════════════════
 grpc:
   enabled: true
   port: 50051
 
-# Rate limiting
-rate_limit:
-  enabled: false
-  ip_limit: 100
-  user_limit: 200
-  ip_whitelist:
-    - "127.0.0.1"
-  path_whitelist:
-    - "/healthz"
+# ═══════════════════════════════════════════════════════════════
+# 应用配置
+# ═══════════════════════════════════════════════════════════════
+app:
+  name: Xboard-Go
+  # 节点 API 密钥 (用于节点认证，请修改为随机字符串)
+  node_api_key: change-me-node-api-key
+  # 默认用户角色: user
+  default_user_role: user
+  # 订阅 Token 长度
+  subscribe_token_length: 32
+  # bcrypt 加密成本 (4-31，默认10)
+  bcrypt_cost: 10
 
-# Logger
-logger:
+# ═══════════════════════════════════════════════════════════════
+# JWT 配置
+# ═══════════════════════════════════════════════════════════════
+jwt:
+  # JWT 签名密钥 (请修改为随机字符串)
+  secret: change-me-to-a-random-secret-key
+  # Access Token 有效期 (秒)
+  access_token_ttl: 7200
+  # Refresh Token 有效期 (秒)
+  refresh_token_ttl: 604800
+
+# ═══════════════════════════════════════════════════════════════
+# 日志配置
+# ═══════════════════════════════════════════════════════════════
+log:
   level: info  # debug, info, warn, error
   format: json  # json, text
+  output: stdout  # stdout, file
+  # file_path: /var/log/xboard-go.log  # 当 output=file 时有效
+
+# ═══════════════════════════════════════════════════════════════
+# 限流配置
+# ═══════════════════════════════════════════════════════════════
+rate_limit:
+  enabled: true
+  ip_limit: 100       # IP 每分钟最大请求数
+  user_limit: 300     # 用户每分钟最大请求数
+  ip_whitelist:
+    - "127.0.0.1"
+    - "::1"
+  path_whitelist:
+    - "/healthz"
+    - "/api/v1/client/subscribe"
+
+# ═══════════════════════════════════════════════════════════════
+# 验证码配置 (可选)
+# ═══════════════════════════════════════════════════════════════
+# captcha:
+#   provider: turnstile  # turnstile, recaptcha_v2, recaptcha_v3
+#   site_key: your_site_key
+#   secret_key: your_secret_key
+#   min_score: 0.5  # reCAPTCHA v3 最小分数 (0-1)
